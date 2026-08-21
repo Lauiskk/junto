@@ -41,15 +41,16 @@ flowchart LR
         P2["vídeo + som + voz"]
     end
 
-    HOST -. "SDP / ICE (texto)" .-> SRV
-    SRV -. "SDP / ICE (texto)" .-> V1
-    SRV -. "SDP / ICE (texto)" .-> V2
+    HOST -.->|"SDP / ICE (texto)"| SRV
+    SRV -.->|"SDP / ICE (texto)"| V1
+    SRV -.->|"SDP / ICE (texto)"| V2
 
-    GOV == "mídia P2P<br/>1 conexão por pessoa" ==> P1
-    GOV == "mídia P2P" ==> P2
+    GOV ==>|"mídia P2P<br/>1 conexão por pessoa"| P1
+    GOV ==>|"mídia P2P"| P2
 
     TURN["TURN<br/>só quando o caminho<br/>direto não fecha"]
-    GOV -.-> TURN -.-> P2
+    GOV -.->|"plano B"| TURN
+    TURN -.-> P2
 ```
 
 O servidor é deliberadamente burro: ele apresenta os dois lados e sai da frente.
