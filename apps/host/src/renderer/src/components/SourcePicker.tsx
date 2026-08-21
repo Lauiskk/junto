@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement } from 'react'
 import type { CaptureSource } from '../../../main/capture'
+import { Icon } from './Icon'
 
 interface Props {
   open: boolean
@@ -122,10 +123,18 @@ export function SourcePicker({
             <button key={source.id} className="source" onClick={() => onPick(source)}>
               <img className="source__thumb" src={source.thumbnailDataUrl} alt="" />
               <span className="source__name">
-                {source.appIconDataUrl && (
+                {/* Sem icone proprio (telas nunca tem, e algumas janelas
+                    tambem nao), um simbolo generico mantem o alinhamento do
+                    nome igual em todos os cartoes. */}
+                {source.appIconDataUrl ? (
                   <img className="source__icon" src={source.appIconDataUrl} alt="" />
+                ) : (
+                  <Icon
+                    className="source__icon"
+                    name={source.id.startsWith('screen:') ? 'monitor' : 'window'}
+                  />
                 )}
-                {source.name}
+                <span>{source.name}</span>
               </span>
             </button>
           ))}

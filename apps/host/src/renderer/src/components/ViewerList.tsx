@@ -5,6 +5,7 @@ import {
   formatBytes,
   type ViewerConnection
 } from '@junto/rtc'
+import { Icon } from './Icon'
 
 interface Props {
   viewers: ViewerConnection[]
@@ -91,6 +92,7 @@ export function ViewerList({ viewers, onKick }: Props): ReactElement {
                   onClick={() => onKick(viewer.peerId, false)}
                   title="Derruba a conexao; a pessoa pode voltar pelo mesmo link"
                 >
+                  <Icon name="x" size={13} />
                   Remover
                 </button>
                 <button
@@ -98,6 +100,7 @@ export function ViewerList({ viewers, onKick }: Props): ReactElement {
                   onClick={() => onKick(viewer.peerId, true)}
                   title="Derruba e impede o retorno nesta sala"
                 >
+                  <Icon name="ban" size={13} />
                   Bloquear
                 </button>
               </span>

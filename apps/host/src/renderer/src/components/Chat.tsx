@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
+import { Icon } from './Icon'
 
 export interface ChatMessage {
   id: number
@@ -73,7 +74,8 @@ export function Chat({ messages, onSend, placeholder }: Props): ReactElement {
           maxLength={2000}
         />
         <button className="button--primary" type="submit" disabled={!draft.trim()}>
-          Enviar
+          <Icon name="send" />
+          <span className="only-wide">Enviar</span>
         </button>
       </form>
     </div>

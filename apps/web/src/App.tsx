@@ -12,6 +12,7 @@ import { JoinForm } from './components/JoinForm'
 import { Hud } from './components/Hud'
 import { PlayerBadge } from './components/PlayerBadge'
 import { Chat, type ChatMessage } from './components/Chat'
+import { Icon } from './components/Icon'
 
 /**
  * Viewer: a metade que NAO instala nada.
@@ -345,27 +346,41 @@ export function App(): ReactElement {
         </div>
 
         <div className="viewer__controls">
-          <label className="volume">
-            Tela
+          {/* O icone do volume vira o botao de mudo: o controle e o estado no
+              mesmo lugar, que e onde qualquer player o coloca. */}
+          <label className="volume" title="Volume da tela">
+            <button
+              type="button"
+              className="volume__toggle"
+              onClick={() => (muted ? unlockAudio() : setMuted(true))}
+              aria-label={muted ? 'Ativar o som' : 'Silenciar'}
+            >
+              <Icon name={muted ? 'volume-x' : 'volume'} />
+            </button>
             <input
               type="range"
               min={0}
               max={1}
               step={0.02}
               value={volume}
+              aria-label="Volume da tela"
               onChange={(e) => setVolume(Number(e.target.value))}
             />
           </label>
 
+          {/* Rotulo em texto, e nao icone: o de microfone ja e o botao do MEU
+              microfone, ali do lado. Dois significados no mesmo desenho e pior
+              que uma palavra curta. */}
           {state?.voiceStream && (
-            <label className="volume">
-              Voz
+            <label className="volume" title="Volume da voz do host">
+              <span className="volume__label">voz</span>
               <input
                 type="range"
                 min={0}
                 max={1}
                 step={0.02}
                 value={voiceVolume}
+                aria-label="Volume da voz"
                 onChange={(e) => setVoiceVolume(Number(e.target.value))}
               />
             </label>
@@ -376,27 +391,31 @@ export function App(): ReactElement {
             className={micOn ? 'is-live' : ''}
             title="Falar com o host"
           >
-            {micOn ? '● Falando' : 'Microfone'}
+            <Icon name={micOn ? 'mic' : 'mic-off'} />
+            <span className="only-wide">{micOn ? 'Falando' : 'Microfone'}</span>
           </button>
           <button
             onClick={() => setChatOpen((v) => !v)}
             className={chatOpen ? 'is-active' : ''}
             title="Chat (tecla c)"
           >
-            Chat{unread > 0 ? ` (${unread})` : ''}
+            <Icon name="chat" />
+            <span className="only-wide">Chat</span>
+            {unread > 0 && <span className="badge">{unread}</span>}
           </button>
           <button onClick={togglePip} title="Picture-in-picture">
-            PiP
+            <Icon name="pip" />
           </button>
           <button onClick={toggleFullscreen} title="Tela cheia">
-            Tela cheia
+            <Icon name="fullscreen" />
           </button>
           <button
             onClick={() => setShowHud((v) => !v)}
             className={showHud ? 'is-active' : ''}
             title="Diagnostico (tecla i)"
           >
-            Stats
+            <Icon name="activity" />
+            <span className="only-wide">Stats</span>
           </button>
         </div>
       </header>
@@ -482,6 +501,7 @@ export function App(): ReactElement {
                     className="button button--primary"
                     onClick={() => sessionRef.current?.retry()}
                   >
+                    <Icon name="refresh" />
                     Tentar de novo
                   </button>
                 </>
@@ -518,6 +538,7 @@ export function App(): ReactElement {
 
           {muted && (hasVideo || cinemaReady) && (
             <button className="viewer__unlock" onClick={unlockAudio}>
+              <Icon name="volume" size={18} />
               Toque para ativar o som
             </button>
           )}

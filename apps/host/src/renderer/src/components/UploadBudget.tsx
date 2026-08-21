@@ -1,5 +1,6 @@
 import { useState, type ReactElement } from 'react'
 import type { UploadMode, UploadSetting } from '@junto/rtc'
+import { Icon } from './Icon'
 
 /**
  * Quanto da internet o app pode usar para transmitir.
@@ -51,7 +52,9 @@ export function UploadBudget({
 
   return (
     <article className="card">
-      <h2 className="card__title">4. Limite de upload</h2>
+      <h2 className="card__title">
+        <span className="card__step">4</span>Limite de upload
+      </h2>
 
       <div className="presets presets--stack">
         {OPCOES.map((opcao) => (

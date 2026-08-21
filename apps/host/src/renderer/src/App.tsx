@@ -31,6 +31,7 @@ import {
 import { SourcePicker } from './components/SourcePicker'
 import { ViewerList } from './components/ViewerList'
 import { UploadBudget } from './components/UploadBudget'
+import { Icon } from './components/Icon'
 import { Chat, type ChatMessage } from './components/Chat'
 
 /**
@@ -455,7 +456,8 @@ export function App(): ReactElement {
             className={micOn ? 'is-live' : ''}
             title="Falar com quem esta assistindo"
           >
-            {micOn ? '● Microfone aberto' : 'Microfone'}
+            <Icon name={micOn ? 'mic' : 'mic-off'} />
+            {micOn ? 'Microfone aberto' : 'Microfone'}
           </button>
           <span className={`chip chip--${state?.status ?? 'idle'}`}>
             {state?.status === 'connected'
@@ -492,6 +494,7 @@ export function App(): ReactElement {
             )}
           </span>
           <button onClick={alternarAudio} className={audioCortado ? '' : 'is-live'}>
+            <Icon name={audioCortado ? 'volume' : 'volume-x'} />
             {audioCortado ? 'Voltar o audio' : 'Cortar audio agora'}
           </button>
         </div>
@@ -501,7 +504,9 @@ export function App(): ReactElement {
         <section className="col">
           {/* --------------------------------------------------------- sala */}
           <article className="card">
-            <h2 className="card__title">1. Sua sala</h2>
+            <h2 className="card__title">
+              <span className="card__step">1</span>Sua sala
+            </h2>
             <div className="room-code">{state?.roomCode ?? '······'}</div>
             {inviteLink ? (
               <>
@@ -511,6 +516,7 @@ export function App(): ReactElement {
                     className="button--primary"
                     onClick={() => void copyLink(inviteLink, 'principal')}
                   >
+                    <Icon name={copied === 'principal' ? 'check' : 'copy'} />
                     {copied === 'principal' ? 'Copiado!' : 'Copiar'}
                   </button>
                 </div>
@@ -520,6 +526,7 @@ export function App(): ReactElement {
                     <div className="link-row">
                       <input readOnly value={lanLink} onFocus={(e) => e.target.select()} />
                       <button onClick={() => void copyLink(lanLink, 'rede')}>
+                        <Icon name={copied === 'rede' ? 'check' : 'copy'} />
                         {copied === 'rede' ? 'Copiado!' : 'Copiar'}
                       </button>
                     </div>
@@ -545,7 +552,9 @@ export function App(): ReactElement {
 
           {/* ------------------------------------------------------- fonte */}
           <article className="card">
-            <h2 className="card__title">2. O que transmitir</h2>
+            <h2 className="card__title">
+              <span className="card__step">2</span>O que transmitir
+            </h2>
 
             <div
               className={`preview ${dragging ? 'is-dragging' : ''}`}
@@ -556,9 +565,12 @@ export function App(): ReactElement {
               onDragLeave={() => setDragging(false)}
               onDrop={onDrop}
             >
+              {/* Escondido tambem quando nao ha nada: um <video> vazio pinta
+                  um retangulo preto por cima do fundo quadriculado, e o vazio
+                  fica parecendo uma transmissao de tela preta. */}
               <video
                 ref={previewRef}
-                className={mode === 'file' ? 'is-hidden' : ''}
+                className={mode === 'screen' ? '' : 'is-hidden'}
                 muted
                 autoPlay
                 playsInline
@@ -580,9 +592,11 @@ export function App(): ReactElement {
 
             <div className="row">
               <button className="button--primary" onClick={() => setPickerOpen(true)}>
+                <Icon name="monitor" />
                 {mode === 'screen' ? 'Trocar tela' : 'Tela ou janela'}
               </button>
               <button onClick={() => fileInputRef.current?.click()}>
+                <Icon name="film" />
                 {mode === 'file' ? 'Trocar arquivo' : 'Arquivo do PC'}
               </button>
               {mode === 'file' && (
@@ -591,11 +605,15 @@ export function App(): ReactElement {
                   className={cinema ? 'is-active' : ''}
                   title="Manda o arquivo original em vez de recodificar"
                 >
-                  {cinema ? '● Modo Cinema' : 'Modo Cinema'}
+                  <Icon name="film" />
+                  Modo Cinema
                 </button>
               )}
               {mode !== 'none' && (
-                <button onClick={() => void stopStreaming()}>Parar</button>
+                <button onClick={() => void stopStreaming()}>
+                  <Icon name="stop" />
+                  Parar
+                </button>
               )}
             </div>
 
@@ -643,7 +661,9 @@ export function App(): ReactElement {
 
           {/* ------------------------------------------------------ preset */}
           <article className="card">
-            <h2 className="card__title">3. Prioridade da qualidade</h2>
+            <h2 className="card__title">
+              <span className="card__step">3</span>Prioridade da qualidade
+            </h2>
             <div className="presets">
               {PRESET_LIST.map((preset) => (
                 <button
@@ -678,7 +698,9 @@ export function App(): ReactElement {
         <section className="col">
           <article className="card card--grow">
             <h2 className="card__title">
-              Quem esta assistindo {viewers.length > 0 && <span>({viewers.length})</span>}
+              <Icon name="users" size={15} />
+              Quem esta assistindo{' '}
+              {viewers.length > 0 && <span>{viewers.length} conectado{viewers.length > 1 ? 's' : ''}</span>}
             </h2>
             <ViewerList
               viewers={viewers}
@@ -687,7 +709,10 @@ export function App(): ReactElement {
           </article>
 
           <article className="card card--chat">
-            <h2 className="card__title">Chat da sala</h2>
+            <h2 className="card__title">
+              <Icon name="chat" size={15} />
+              Chat da sala
+            </h2>
             {micError && <p className="alert">{micError}</p>}
             <Chat
               messages={messages}
@@ -699,7 +724,10 @@ export function App(): ReactElement {
           </article>
 
           <article className="card">
-            <h2 className="card__title">Diagnostico</h2>
+            <h2 className="card__title">
+              <Icon name="activity" size={15} />
+              Diagnostico
+            </h2>
             <dl className="diag">
               <div>
                 <dt>Codec negociado</dt>

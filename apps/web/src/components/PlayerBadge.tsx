@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement } from 'react'
 import type { PlayerState } from '@junto/rtc'
+import { Icon } from './Icon'
 
 interface Props {
   player: PlayerState
@@ -46,7 +47,12 @@ export function PlayerBadge({ player, clockOffsetMs }: Props): ReactElement {
   return (
     <span className="player-badge">
       <span className="player-badge__icon">
-        {player.state === 'playing' ? '▶' : player.state === 'paused' ? '❚❚' : '■'}
+        {/* Glifos de texto (▶ ❚❚ ■) mudam de desenho e de peso a cada fonte do
+            sistema; em SVG o simbolo fica igual no Windows, no Mac e no iPhone. */}
+        <Icon
+          name={player.state === 'playing' ? 'play' : player.state === 'paused' ? 'pause' : 'stop'}
+          size={11}
+        />
       </span>
       {formatTime(capped)}
       {player.durationSec ? ` / ${formatTime(player.durationSec)}` : ''}

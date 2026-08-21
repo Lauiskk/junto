@@ -1,15 +1,56 @@
+/**
+ * Sistema visual de quem assiste.
+ *
+ * A regra que organiza este arquivo: **a imagem e o produto**. Tudo que nao for
+ * o video e moldura, e moldura boa e a que some. Por isso a barra e escura,
+ * translucida e sem preenchimento forte; por isso o palco e preto puro; e por
+ * isso o unico elemento que tem permissao de brilhar e o botao de liberar o som,
+ * que precisa ser encontrado por alguem que acabou de abrir um link no celular.
+ *
+ * A outra metade do arquivo cuida do celular de verdade: alvos de toque de 40px,
+ * `dvh` em vez de `vh` (a barra do Safari come o resto), e area segura para o
+ * notch.
+ */
+
 :root {
-  --bg: #0b0d12;
-  --panel: #141821;
-  --panel-2: #1b2030;
-  --line: #262c3b;
-  --text: #e8ecf5;
-  --muted: #8d97ad;
-  --accent: #4f8cff;
-  --good: #35c48a;
-  --warn: #e5b95c;
-  --bad: #f2617a;
+  --bg: #07080c;
+  --stage: #000;
+  --surface-1: #0d0f15;
+  --surface-2: #13161f;
+  --surface-3: #1a1e2a;
+  --line: #232838;
+  --line-soft: #1a1e29;
+
+  --text: #e9edf7;
+  --text-dim: #a6b0c4;
+  --muted: #6d7893;
+
+  --accent: #5b8cff;
+  --accent-hi: #82a6ff;
+  --accent-ink: #050c1c;
+  --accent-wash: rgb(91 140 255 / 12%);
+  --good: #3ddc97;
+  --warn: #f0b849;
+  --bad: #ff6b81;
+
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-full: 999px;
+
+  --lift: inset 0 1px 0 rgb(255 255 255 / 5%);
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-2: 0 12px 32px -12px rgb(0 0 0 / 70%);
+  --shadow-pop: 0 24px 64px -16px rgb(0 0 0 / 80%);
+
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --fast: 130ms;
+  --slow: 260ms;
+
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
+
   color-scheme: dark;
+  accent-color: var(--accent);
 }
 
 * {
@@ -26,310 +67,153 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
 }
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border: 3px solid transparent;
+  border-radius: var(--r-full);
+  background-clip: content-box;
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 0 var(--line);
+}
+
+/* ------------------------------------------------------------- controles */
 
 button {
   font: inherit;
-  color: inherit;
-  background: var(--panel-2);
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface-3);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  padding: 8px 13px;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  box-shadow: var(--lift);
+  transition:
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 
 button:hover:not(:disabled) {
-  background: #232a3c;
-  border-color: #38415a;
+  background: #212739;
+  border-color: #333b52;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 button:disabled {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: not-allowed;
 }
 
 button.is-active {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--accent-wash);
+  color: var(--accent-hi);
+}
+
+button.is-live {
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+  background: rgb(255 107 129 / 12%);
+  color: var(--bad);
 }
 
 .button--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #06101f;
-  font-weight: 600;
+  background: linear-gradient(180deg, var(--accent-hi), var(--accent));
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 650;
+  box-shadow:
+    var(--lift),
+    0 6px 18px -8px rgb(91 140 255 / 60%);
 }
 
 .button--primary:hover:not(:disabled) {
-  background: #3f7cf0;
-  border-color: #3f7cf0;
+  background: linear-gradient(180deg, #96b4ff, #6b98ff);
+  border-color: transparent;
 }
 
-/* ---------------------------------------------------------------- entrada */
-
-.join {
-  display: grid;
-  place-items: center;
-  min-height: 100%;
-  padding: 24px;
-}
-
-.join__card {
-  width: min(420px, 100%);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.join__title {
-  margin: 0;
-  font-size: 30px;
-  letter-spacing: -0.02em;
-}
-
-.join__subtitle {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.join__hint {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-kbd {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 12px;
+:focus-visible {
+  outline: 2px solid var(--accent-hi);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 13px;
-  color: var(--muted);
 }
 
 .field em {
   font-style: normal;
-  opacity: 0.7;
+  font-size: 12.5px;
+  color: var(--muted);
 }
 
 .field__input {
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  padding: 11px 13px;
   color: var(--text);
   font: inherit;
+  width: 100%;
+  transition:
+    border-color var(--fast) var(--ease),
+    box-shadow var(--fast) var(--ease);
 }
 
 .field__input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
-.field__input--code {
-  font-size: 26px;
-  letter-spacing: 0.34em;
-  text-align: center;
-  font-family: ui-monospace, 'Cascadia Mono', monospace;
-}
-
-/* ----------------------------------------------------------------- viewer */
-
-.viewer {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.viewer__bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  flex-wrap: wrap;
-}
-
-.viewer__identity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.viewer__source {
-  color: var(--muted);
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 42vw;
-}
-
-.viewer__controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.volume {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.volume input {
-  width: 90px;
-  accent-color: var(--accent);
-}
-
-.dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--muted);
-  flex: none;
-}
-
-.dot--connected {
-  background: var(--good);
-  box-shadow: 0 0 0 3px rgba(53, 196, 138, 0.16);
-}
-
-.dot--connecting,
-.dot--new {
-  background: var(--warn);
-}
-
-.dot--failed,
-.dot--disconnected,
-.dot--closed {
-  background: var(--bad);
-}
-
-.viewer__stage {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  background: #000;
-  display: grid;
-  place-items: center;
-}
-
-.viewer__video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
-}
-
-.viewer__placeholder {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  gap: 8px;
-  padding: 24px;
-  color: var(--muted);
-}
-
-.viewer__placeholder h2 {
-  margin: 0;
-  color: var(--text);
-  font-size: 20px;
-}
-
-.viewer__placeholder p {
-  margin: 0;
-  max-width: 460px;
-  line-height: 1.5;
-}
-
-.viewer__unlock {
-  position: absolute;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--accent);
+  outline: none;
   border-color: var(--accent);
-  color: #06101f;
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+/* O codigo da sala e ditado em voz alta; letra grande e espacada evita erro. */
+.field__input--code {
+  font-family: var(--mono);
+  font-size: 24px;
   font-weight: 600;
-  padding: 12px 20px;
-}
-
-/* -------------------------------------------------------------------- hud */
-
-.hud {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 290px;
-  background: rgba(15, 18, 26, 0.93);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px;
-  backdrop-filter: blur(8px);
-}
-
-.hud__title {
-  margin: 0 0 10px;
-  font-size: 13px;
+  letter-spacing: 0.28em;
+  text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.hud__grid {
-  margin: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 12px;
-  font-size: 13px;
-}
-
-.hud__grid dt {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.hud__grid dd {
-  margin: 2px 0 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.hud__muted {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.hud__note {
-  margin: 12px 0 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--muted);
+  padding: 14px 10px 14px calc(10px + 0.28em);
 }
 
 .good {
@@ -344,119 +228,635 @@ kbd {
   color: var(--bad);
 }
 
-/* --------------------------------------------------------- filme (fase 4) */
+/* -------------------------------------------------------- tela de entrada */
 
-.player-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px 11px;
-  white-space: nowrap;
+.join {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(900px 520px at 50% -10%, rgb(91 140 255 / 10%), transparent 70%),
+    var(--bg);
 }
 
-.player-badge__icon {
-  color: var(--accent);
-  font-size: 10px;
-}
-
-/* ------------------------------------------------------- voz e chat (f3) */
-
-.viewer__body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-
-.viewer__chat {
-  width: 320px;
-  flex: none;
-  border-left: 1px solid var(--line);
-  background: var(--panel);
+.join__card {
+  width: min(430px, 100%);
   display: flex;
   flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 120px),
+    var(--surface-1);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-2);
+  animation: subir var(--slow) var(--ease);
+}
+
+@keyframes subir {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+.join__title {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.join__subtitle {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.join__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.netcheck {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.netcheck__result p {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.netcheck__result ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.netcheck__error {
+  margin: 0;
+  color: var(--bad);
+  font-size: 12.5px;
+}
+
+/* ------------------------------------------------------------- o viewer */
+
+.viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
   min-height: 0;
+  background: var(--bg);
+}
+
+.viewer__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  padding-top: max(9px, env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
+  flex: none;
+  flex-wrap: wrap;
+  z-index: 10;
+}
+
+.viewer__identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.viewer__identity strong {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.viewer__source {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 34ch;
+}
+
+.viewer__controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.viewer__controls button {
+  padding: 7px 11px;
+  font-size: 12.5px;
+}
+
+/**
+ * Contador de mensagens nao lidas.
+ *
+ * Numero pequeno em circulo cheio: e o padrao que todo mundo ja sabe ler, e
+ * dispensa a palavra "novas" ocupando a barra.
+ */
+.badge {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: var(--r-full);
+  background: var(--bad);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.viewer__stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  background: var(--stage);
+  overflow: hidden;
+}
+
+.viewer__video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: var(--stage);
+}
+
+/**
+ * O botao de liberar o som.
+ *
+ * E o unico elemento da interface com brilho proprio, e de proposito: no
+ * iPhone a imagem chega muda, e quem acabou de abrir o link precisa achar este
+ * botao sem procurar. O balanco leve chama o olho sem virar animacao irritante.
+ */
+.viewer__unlock {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  padding: 12px 22px;
+  border-radius: var(--r-full);
+  background: linear-gradient(180deg, var(--accent-hi), var(--accent));
+  border: none;
+  color: var(--accent-ink);
+  font-weight: 650;
+  font-size: 14px;
+  /* Sem isto a frase quebra em duas linhas na largura de um celular e a pilula
+     vira um ovo: o palco e um grid com `place-items: center`, e isso encolhe
+     ate os filhos posicionados de forma absoluta. */
+  white-space: nowrap;
+  box-shadow: 0 12px 32px -10px rgb(91 140 255 / 80%);
+  animation: chamar 2.6s var(--ease) infinite;
+}
+
+.viewer__unlock:hover:not(:disabled) {
+  background: linear-gradient(180deg, #96b4ff, #6b98ff);
+}
+
+.viewer__unlock:active:not(:disabled) {
+  transform: translateX(-50%) translateY(1px);
+}
+
+@keyframes chamar {
+  0%,
+  70%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  80% {
+    transform: translateX(-50%) translateY(-5px);
+  }
+
+  90% {
+    transform: translateX(-50%) translateY(-2px);
+  }
+}
+
+.viewer__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 32px 24px;
+  background:
+    radial-gradient(700px 420px at 50% 40%, rgb(91 140 255 / 7%), transparent 70%),
+    var(--stage);
+}
+
+.viewer__placeholder h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  max-width: 30ch;
+}
+
+.viewer__placeholder p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  line-height: 1.65;
+  max-width: 46ch;
+}
+
+/* Diagnostico de conexao: dados, entao fonte de dados. */
+.viewer__diag {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 14px;
+  border-radius: var(--r);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  line-height: 1.7;
+}
+
+.viewer__diag strong {
+  color: var(--text-dim);
+  font-weight: 600;
 }
 
 .viewer__error {
   margin: 0;
-  padding: 8px 16px;
-  background: rgba(242, 97, 122, 0.12);
-  border-bottom: 1px solid rgba(242, 97, 122, 0.35);
-  color: #ffc9d3;
-  font-size: 13px;
+  padding: 9px 14px;
+  background: rgb(255 107 129 / 12%);
+  border-bottom: 1px solid color-mix(in srgb, var(--bad) 30%, transparent);
+  color: var(--bad);
+  font-size: 12.5px;
+  flex: none;
 }
 
-button.is-live {
-  border-color: var(--bad);
-  color: var(--bad);
+/* --------------------------------------------------------------- volume */
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/**
+ * Slider desenhado a mao.
+ *
+ * O nativo do Chrome e alto, cinza e destoa de tudo; num app cujo assunto e
+ * som, o controle de volume nao pode ser a parte mais feia da tela.
+ */
+/**
+ * O icone do volume e um botao dentro do label do slider.
+ *
+ * Aninhar botao em label pediria cuidado com o clique borbulhando para o
+ * controle — mas aqui o alvo do label e o proprio slider, entao clicar no icone
+ * so faz o que o icone promete.
+ */
+.volume__toggle {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
+  color: var(--text-dim);
+  border-radius: var(--r-sm);
+}
+
+.volume__toggle:hover:not(:disabled) {
+  background: rgb(255 255 255 / 6%);
+  color: var(--text);
+}
+
+.volume__label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.volume input[type='range'] {
+  appearance: none;
+  width: 84px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  cursor: pointer;
+  margin: 0;
+}
+
+.volume input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: var(--r-full);
+  background: var(--text);
+  border: none;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 60%);
+  transition: transform var(--fast) var(--ease);
+}
+
+.volume input[type='range']:hover::-webkit-slider-thumb {
+  transform: scale(1.2);
+  background: #fff;
+}
+
+.volume input[type='range']::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: var(--r-full);
+  background: var(--text);
+  border: none;
+}
+
+/* ------------------------------------------------------- Modo Cinema/HUD */
+
+.download-bar {
+  width: min(360px, 100%);
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.download-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hi));
+  transition: width var(--slow) var(--ease);
+}
+
+.player-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-full);
+  font-size: 11px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.player-badge.good {
+  border-color: color-mix(in srgb, var(--good) 35%, transparent);
+  color: var(--good);
+}
+
+.player-badge.warn {
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  color: var(--warn);
+}
+
+.player-badge__icon {
+  opacity: 0.75;
+}
+
+/* Painel de diagnostico sobre o video: vidro, para nao esconder a imagem. */
+.hud {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: min(280px, calc(100% - 28px));
+  padding: 13px 15px;
+  border-radius: var(--r);
+  background: rgb(10 12 18 / 82%);
+  backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgb(255 255 255 / 8%);
+  box-shadow: var(--shadow-2);
+  animation: surgir var(--fast) var(--ease);
+}
+
+@keyframes surgir {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.hud__title {
+  margin: 0 0 10px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hud__grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 12px;
+  font-size: 12px;
+}
+
+.hud__grid > div {
+  display: contents;
+}
+
+.hud__grid dt {
+  color: var(--muted);
+}
+
+.hud__grid dd {
+  margin: 0;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.hud__muted {
+  color: var(--muted);
+}
+
+.hud__note {
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--muted);
+  flex: none;
+}
+
+.dot--new,
+.dot--connecting {
+  background: var(--warn);
+  animation: piscar 1.4s var(--ease) infinite;
+}
+
+.dot--connected {
+  background: var(--good);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--good) 60%, transparent);
+}
+
+.dot--disconnected {
+  background: var(--warn);
+}
+
+.dot--failed,
+.dot--closed {
+  background: var(--bad);
+}
+
+@keyframes piscar {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ----------------------------------------------------------------- chat */
+
+.viewer__chat {
+  width: 300px;
+  flex: none;
+  border-left: 1px solid var(--line-soft);
+  background: var(--surface-1);
+  display: flex;
+  min-height: 0;
+  /* Sem isto o formulario empurra o painel e o botao Enviar sai da tela: o
+     padrao de um item flex e `min-width: auto`, ou seja, "nunca menor que o
+     meu conteudo". */
+  min-width: 0;
+  container-type: inline-size;
+  animation: entrar var(--slow) var(--ease);
+}
+
+@keyframes entrar {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
 }
 
 .chat {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  gap: 10px;
   flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 12px;
 }
 
 .chat__list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
 }
 
 .chat__empty {
-  margin: 0;
+  margin: auto;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12.5px;
+  text-align: center;
 }
 
 .chat__msg {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-width: 92%;
+  gap: 3px;
+  max-width: 85%;
+  align-self: flex-start;
 }
 
 .chat__msg.is-mine {
   align-self: flex-end;
-  text-align: right;
+  align-items: flex-end;
 }
 
 .chat__meta {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--muted);
+  padding: 0 3px;
 }
 
 .chat__text {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 7px 10px;
+  background: var(--surface-3);
+  border-radius: 13px 13px 13px 4px;
+  padding: 7px 11px;
   font-size: 13.5px;
-  line-height: 1.4;
-  word-break: break-word;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .chat__msg.is-mine .chat__text {
-  background: rgba(79, 140, 255, 0.14);
-  border-color: rgba(79, 140, 255, 0.4);
+  background: linear-gradient(180deg, var(--accent), #4a7ceb);
+  color: var(--accent-ink);
+  border-radius: 13px 13px 4px 13px;
+  font-weight: 500;
 }
 
 .chat__form {
   display: flex;
   gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+/* Painel estreito: o botao vira so o aviao de papel. */
+@container (width < 300px) {
+  .chat__form .only-wide {
+    display: none;
+  }
 }
 
 .chat__form input {
@@ -464,67 +864,143 @@ button.is-live {
   min-width: 0;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 9px 11px;
   color: var(--text);
   font: inherit;
-  font-size: 13.5px;
 }
 
 .chat__form input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
 }
 
-/* ------------------------------------------------- Modo Cinema (fase 6) */
+/* --------------------------------------------------------------- celular */
 
-.download-bar {
-  width: min(420px, 70vw);
-  height: 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  overflow: hidden;
-  margin: 4px auto 8px;
+/**
+ * Quem assiste pelo celular e maioria, nao excecao — o teste que motivou tudo
+ * isso foi um iPhone. Abaixo de 720px a barra vira duas linhas, o chat vira uma
+ * gaveta de baixo e todo alvo de toque cresce para 40px.
+ */
+@media (width < 720px) {
+  .viewer__bar {
+    padding: 8px 10px;
+    padding-top: max(8px, env(safe-area-inset-top));
+    gap: 8px;
+  }
+
+  .viewer__controls {
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .viewer__controls::-webkit-scrollbar {
+    display: none;
+  }
+
+  .viewer__controls button {
+    min-height: 40px;
+    flex: none;
+  }
+
+  /* Na barra estreita fica so o icone; o `title` continua explicando. */
+  .only-wide {
+    display: none;
+  }
+
+  /**
+ * O icone do volume e um botao dentro do label do slider.
+ *
+ * Aninhar botao em label pediria cuidado com o clique borbulhando para o
+ * controle — mas aqui o alvo do label e o proprio slider, entao clicar no icone
+ * so faz o que o icone promete.
+ */
+.volume__toggle {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
+  color: var(--text-dim);
+  border-radius: var(--r-sm);
 }
 
-.download-bar span {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  transition: width 240ms ease;
+.volume__toggle:hover:not(:disabled) {
+  background: rgb(255 255 255 / 6%);
+  color: var(--text);
 }
 
-/* --------------------------------------------- diagnostico de rede (f5) */
+.volume input[type='range'] {
+    width: 64px;
+    height: 6px;
+  }
 
-.netcheck {
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  .viewer__body {
+    flex-direction: column;
+  }
+
+  .viewer__chat {
+    width: 100%;
+    height: 45dvh;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    animation: subirGaveta var(--slow) var(--ease);
+  }
+
+  @keyframes subirGaveta {
+    from {
+      transform: translateY(24px);
+      opacity: 0;
+    }
+  }
+
+  .viewer__placeholder h2 {
+    font-size: 17px;
+  }
+
+  /**
+   * No celular o palco ja e pequeno, e menor ainda com o chat aberto. O painel
+   * fica compacto e perde o paragrafo explicativo: quem esta com o diagnostico
+   * aberto num telefone quer os numeros, nao a aula sobre eles.
+   */
+  .hud {
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    padding: 10px 12px;
+  }
+
+  .hud__grid {
+    gap: 3px 10px;
+    font-size: 11.5px;
+  }
+
+  .hud__note {
+    display: none;
+  }
+
+  .viewer__unlock {
+    bottom: max(24px, env(safe-area-inset-bottom));
+    min-height: 46px;
+  }
+
+  .join__card {
+    padding: 22px;
+  }
 }
 
-.netcheck__error {
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--bad);
-}
-
-.netcheck__result ul {
-  list-style: none;
-  margin: 0 0 8px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-
-.netcheck__result p {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--muted);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
