@@ -116,6 +116,8 @@ interface ViewerPeer {
   restarted: boolean
   /** Desde quando a perda de video esta alta; null quando esta saudavel. */
   lossHighSince: number | null
+  /** Desde quando a perda esta baixa — base para religar o piso. */
+  lossHealthySince: number | null
   /** A trava de perda desligou o piso de bitrate para este espectador. */
   floorDisabled: boolean
   /** Decide resolucao e bitrate a partir da banda medida desta conexao. */
@@ -136,6 +138,9 @@ const NEVER_CONNECTED_MS = 15_000
 /** Perda acima disto, sustentada, significa que o piso esta machucando. */
 const LOSS_CEILING_PCT = 10
 const LOSS_GRACE_MS = 10_000
+/** Abaixo disto, por tempo suficiente, a rede voltou e o piso pode voltar junto. */
+const LOSS_HEALTHY_PCT = 2
+const LOSS_RECOVERY_MS = 60_000
 
 export class HostSession implements Broadcaster {
   readonly kind = 'p2p' as const
@@ -505,6 +510,7 @@ export class HostSession implements Broadcaster {
       offeredAt: Date.now(),
       restarted: false,
       lossHighSince: null,
+      lossHealthySince: null,
       floorDisabled: false,
       governor: new QualityGovernor()
     }
@@ -643,9 +649,30 @@ export class HostSession implements Broadcaster {
 
     if (!perdaAlta) {
       viewer.lossHighSince = null
+
+      /**
+       * A rede melhorou de verdade? Entao devolve o piso.
+       *
+       * Sem esta volta, quem ligou "usar toda a minha internet" ficava com o
+       * botao ligado e sem efeito para sempre depois do primeiro solavanco — e o
+       * aviso na tela continuava acusando um problema que ja tinha passado. A
+       * espera aqui e longa de proposito (um minuto contra dez segundos para
+       * desligar): religar cedo demais so recria o congestionamento.
+       */
+      if (viewer.floorDisabled && stats.network.packetsLostPct < LOSS_HEALTHY_PCT) {
+        viewer.lossHealthySince ??= agora
+        if (agora - viewer.lossHealthySince > LOSS_RECOVERY_MS) {
+          viewer.floorDisabled = false
+          viewer.lossHealthySince = null
+          this.uploadWarning = null
+          console.log(`[host] rede estavel com ${viewer.name}; piso de bitrate de volta`)
+          void this.negotiate(viewer, false)
+        }
+      }
       return
     }
 
+    viewer.lossHealthySince = null
     viewer.lossHighSince ??= agora
     if (viewer.floorDisabled) return
     if (agora - viewer.lossHighSince < LOSS_GRACE_MS) return
@@ -712,6 +739,7 @@ export class HostSession implements Broadcaster {
       viewer.governor = new QualityGovernor()
       viewer.floorDisabled = false
       viewer.lossHighSince = null
+      viewer.lossHealthySince = null
     }
     // O start/min-bitrate vive no SDP, entao mudar de modo exige renegociar.
     await Promise.all(

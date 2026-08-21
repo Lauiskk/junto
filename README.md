@@ -221,7 +221,8 @@ Estão comentadas no código, mas em resumo:
   encoder de ser estrangulado por uma estimativa pessimista. Com uma trava: se a
   perda de vídeo passar de 10% por 10 s, o piso é desligado sozinho e o painel
   diz que foi. Forçar banda que não existe não entrega imagem — entrega
-  congelamento.
+  congelamento. E o piso **volta** sozinho depois de um minuto de rede saudável:
+  um botão que só sabe se desligar é um botão quebrado pela metade.
 - **Estatísticas dos dois lados** — o viewer reporta pelo canal de controle o que
   está realmente recebendo, então o HUD do host mostra o gargalo do *outro* lado,
   não só o próprio.
