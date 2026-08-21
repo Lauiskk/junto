@@ -1,0 +1,28 @@
+# O viewer web e o signaling saem no mesmo dominio: um link so para mandar
+# aos amigos, e o WebSocket herda o mesmo certificado TLS.
+{$JUNTO_DOMAIN} {
+	handle /ws* {
+		reverse_proxy signaling:8787
+	}
+
+	handle /ice {
+		reverse_proxy signaling:8787
+	}
+
+	handle /health {
+		reverse_proxy signaling:8787
+	}
+
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+}

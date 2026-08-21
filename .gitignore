@@ -1,0 +1,21 @@
+node_modules/
+dist/
+dist-electron/
+out/
+release/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+Thumbs.db
+
+# Saida de compilacao do modulo nativo (node-gyp)
+packages/native-audio/build/
+*.node
+
+# Logs e artefatos de execucao
+*.log
+npm-debug.log*
+
+# Configuracao local do assistente
+.claude/

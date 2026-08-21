@@ -1,0 +1,29 @@
+{
+  "name": "@junto/host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@junto/protocol": "*",
+    "@junto/rtc": "*",
+    "@junto/native-audio": "*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "electron": "^43.4.0",
+    "electron-vite": "^5.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.3.6"
+  }
+}

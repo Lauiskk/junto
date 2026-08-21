@@ -1,0 +1,69 @@
+# Infra do Junto — cabe numa VPS de ~US$5/mes.
+#
+# Nenhum video passa por aqui. O signaling so troca texto e o coturn so entra em
+# acao quando a conexao direta entre os dois PCs falha (NAT simetrico / CGNAT,
+# comum em internet movel e em varios provedores brasileiros).
+#
+#   docker compose --env-file ../.env up -d
+#
+services:
+  signaling:
+    build:
+      context: ..
+      dockerfile: server/signaling/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 8787
+      MAX_PEERS_PER_ROOM: ${MAX_PEERS_PER_ROOM:-8}
+      HOST_GRACE_MS: ${HOST_GRACE_MS:-60000}
+      STUN_URLS: ${STUN_URLS:-stun:stun.l.google.com:19302}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+      TURN_TTL_SECONDS: ${TURN_TTL_SECONDS:-43200}
+    expose:
+      - '8787'
+
+  # TURN precisa de rede do host: ele aloca uma faixa grande de portas UDP para
+  # relay, e mapear isso porta a porta em bridge nao funciona bem.
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --listening-port=3478
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:-troque-este-segredo}
+      - --realm=${JUNTO_DOMAIN:-localhost}
+      - --min-port=49160
+      - --max-port=49200
+      - --no-cli
+      - --no-tlsv1
+      - --no-tlsv1_1
+      # Sem isto, um cliente malicioso pode usar seu TURN como proxy para a rede interna.
+      - --no-multicast-peers
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+
+  # HTTPS obrigatorio: navegador so libera captura de midia e WebRTC em contexto
+  # seguro. O Caddy resolve certificado sozinho.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - signaling
+    environment:
+      JUNTO_DOMAIN: ${JUNTO_DOMAIN:-localhost}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../apps/web/dist:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

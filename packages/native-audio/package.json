@@ -1,0 +1,21 @@
+{
+  "name": "@junto/native-audio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Captura de audio POR PROCESSO no Windows (WASAPI process loopback).",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "os": [
+    "win32"
+  ],
+  "scripts": {
+    "install": "node-gyp rebuild || echo \"[native-audio] build falhou; o app cai no audio do sistema\"",
+    "rebuild": "node-gyp rebuild"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.3.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^12.0.0"
+  }
+}

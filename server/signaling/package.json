@@ -1,0 +1,21 @@
+{
+  "name": "@junto/signaling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@junto/protocol": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/ws": "^8.18.1"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "junto",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Screen share ao vivo com audio e baixa latencia, P2P (WebRTC). Host = Electron, viewer = navegador.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "server/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "setup": "npm install && node node_modules/electron/install.js && npm run build:libs",
+    "build:libs": "tsc -b packages/protocol packages/rtc",
+    "dev:libs": "tsc -b packages/protocol packages/rtc --watch",
+    "dev:signaling": "npm run dev -w @junto/signaling",
+    "dev:web": "npm run dev -w @junto/web",
+    "dev:host": "npm run dev -w @junto/host",
+    "test:signaling": "node server/signaling/test/smoke.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build:libs && npm run build --workspaces --if-present",
+    "clean": "tsc -b --clean packages/protocol packages/rtc",
+    "test": "node --test packages/rtc/test/sync.test.mjs packages/rtc/test/codec.test.mjs packages/rtc/test/signaling-client.test.mjs packages/rtc/test/bitrate-budget.test.mjs packages/rtc/test/sdp-video.test.mjs packages/rtc/test/stats.test.mjs",
+    "serve": "npm run build:libs && npm run build -w @junto/web && npm run build -w @junto/signaling && node server/signaling/dist/index.js",
+    "turn:local": "docker run --rm --name junto-coturn -p 3478:3478/udp -p 3478:3478/tcp -p 49160-49170:49160-49170/udp coturn/coturn:4.6-alpine --listening-port=3478 --fingerprint --use-auth-secret --static-auth-secret=junto-local --realm=localhost --min-port=49160 --max-port=49170 --no-cli --log-file=stdout",
+    "build:native": "npm run rebuild -w @junto/native-audio"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
