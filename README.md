@@ -71,6 +71,7 @@ Nada aqui é estimativa; são leituras de sessões reais, com o método descrito
 | Sincronia do Modo Cinema | desvio abaixo de **0,1 s** na maior parte do tempo |
 | Aperto de banda (150 kbps) | áudio cai para **48 kbps** e o vídeo sobrevive em **360p** — antes, 88 kbps de som e 3 de imagem |
 | Recuperação | 360p/48 kbps voltam sozinhos a **720p/192 kbps** quando a banda libera |
+| Queda do túnel no meio da sessão | vídeo avançou **19,86 s em 19,8 s** de relógio, **zero** frames em branco, sala inalterada |
 
 ## Por que o host é um app nativo
 
@@ -223,6 +224,33 @@ Estão comentadas no código, mas em resumo:
   diz que foi. Forçar banda que não existe não entrega imagem — entrega
   congelamento. E o piso **volta** sozinho depois de um minuto de rede saudável:
   um botão que só sabe se desligar é um botão quebrado pela metade.
+- **Queda de sinalização não é queda de mídia**
+  ([`viewer-session.ts`](packages/rtc/src/viewer-session.ts),
+  [`host-session.ts`](packages/rtc/src/host-session.ts)) — o túnel perdia a
+  conexão QUIC de tempos em tempos e o app respondia jogando fora uma
+  `RTCPeerConnection` que continuava entregando vídeo perfeitamente. Quem
+  assistia perdia um pedaço do filme por um problema que não tinha nada a ver com
+  o vídeo. Hoje, enquanto o par estiver `connected`, um `peer-left` de
+  sinalização não encosta na mídia.
+- **A mesma pessoa volta com o mesmo id** ([`ice.ts`](server/signaling/src/index.ts))
+  — o servidor guarda `token do navegador -> id de peer`. Sem isso, cada
+  reconexão criava um "espectador novo" e o host montava uma conexão do zero: a
+  imagem piscava a cada soluço de rede.
+- **Sala vazia dentro da janela de retomada não é sala abandonada** — quando o
+  túnel cai, host e espectadores perdem o socket no MESMO instante. O host saía
+  primeiro (armando a janela) e o espectador logo atrás, e o ramo de "sala vazia"
+  apagava a sala cancelando o próprio timer. O host voltava, não achava a sala,
+  criava outra **com código novo**, e quem tinha o link antigo via "sala não
+  encontrada". Uma condição a mais no `if` resolveu.
+- **Dimensões sempre pares** ([`bitrate-budget.ts`](packages/rtc/src/bitrate-budget.ts))
+  — o encoder H.264 por hardware recusa frames de dimensão ímpar e o Chromium
+  cai silenciosamente para software. Com 1920x1080 a conta dá números redondos e
+  ninguém percebe; compartilhando uma **janela** (1487, 1670, 1343 de largura…) a
+  largura derivada saía ímpar quase sempre.
+- **Escritas de parâmetros serializadas** ([`sender-tuning.ts`](packages/rtc/src/sender-tuning.ts))
+  — `setParameters` só aceita o id de transação mais recente. Dois ajustes
+  simultâneos no mesmo sender faziam o segundo ser recusado, e o ajuste perdido
+  era justamente o de um momento de congestionamento.
 - **Estatísticas dos dois lados** — o viewer reporta pelo canal de controle o que
   está realmente recebendo, então o HUD do host mostra o gargalo do *outro* lado,
   não só o próprio.
@@ -267,8 +295,13 @@ npm run serve
 Em outro terminal, com [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/):
 
 ```bash
-cloudflared tunnel --url http://localhost:8787
+cloudflared tunnel --url http://localhost:8787 --protocol http2
 ```
+
+`--protocol http2` não é enfeite: o padrão é QUIC (UDP), e numa sessão real ele
+perdeu a conexão duas vezes em 15 minutos (`timeout: no recent network
+activity`). Cada queda derruba os WebSockets dos dois lados. O app hoje sobrevive
+a isso sem perder imagem, mas é melhor não provocar.
 
 Ele devolve uma URL `https://algo.trycloudflare.com`. Aponte o app do host para
 ela e reinicie:

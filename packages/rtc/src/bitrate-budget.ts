@@ -90,6 +90,67 @@ export function audioBudgetFor(totalKbps: number, presetAudioKbps: number): numb
  */
 export const MIN_VIDEO_KBPS = 60
 
+/** Nao vale a pena descer abaixo disto procurando dimensao par. */
+const MIN_TARGET_HEIGHT = 144
+
+/**
+ * Escolhe uma escala cujo resultado tenha LARGURA E ALTURA PARES.
+ *
+ * O encoder H.264 por hardware recusa frames de dimensao impar. Quando isso
+ * acontece o Chromium nao falha de forma visivel — ele reclama no log e cai
+ * para o encoder de software, que gasta CPU e engasga. Numa sessao real o log
+ * ficou cheio de linhas como:
+ *
+ *   Input video size is 803x432, but hardware H.264 encoder only supports
+ *   even sized frames.
+ *
+ * A causa e a conta ingenua `escala = alturaDaFonte / alturaAlvo`. Com 1920x1080
+ * ela cai em numeros redondos (1.5 -> 1280x720) e ninguem percebe o problema.
+ * Mas compartilhando uma JANELA, cuja largura e qualquer coisa (1487, 1670,
+ * 1343...), a largura derivada sai impar quase sempre.
+ *
+ * A busca desce de duas em duas linhas ate achar uma altura cuja largura
+ * derivada tambem seja par. Perde-se no maximo alguns pixels de altura; ganha-se
+ * o encoder da GPU de volta.
+ */
+export function evenFriendlyScale(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetHeight: number
+): number {
+  if (sourceWidth <= 0 || sourceHeight <= 0 || targetHeight <= 0) return 1
+
+  /**
+   * A busca comeca na MENOR entre a altura pedida e a da fonte — e nao para na
+   * fonte.
+   *
+   * Uma janela de 1487x800 tem largura impar na resolucao nativa: mesmo sem
+   * nenhuma reducao, o encoder por hardware ja recusa o frame. Nesse caso o
+   * certo e encolher 4 pixels e manter a GPU, nao mandar o tamanho "original"
+   * e cair para software.
+   */
+  for (
+    let h = Math.min(targetHeight, sourceHeight) & ~1;
+    h >= MIN_TARGET_HEIGHT;
+    h -= 2
+  ) {
+    // Arredondar ANTES de conferir: e o valor arredondado que vai para o
+    // encoder, entao e ele que precisa produzir dimensoes pares.
+    const escala = Math.round((sourceHeight / h) * 1000) / 1000
+    if (escala < 1) continue
+    if (
+      Math.round(sourceWidth / escala) % 2 === 0 &&
+      Math.round(sourceHeight / escala) % 2 === 0
+    ) {
+      return escala
+    }
+  }
+
+  // Nenhuma combinacao par: fica com a conta direta, que e o comportamento
+  // antigo — pior que o ideal, mas nunca pior do que era.
+  return Math.max(1, Math.round((sourceHeight / targetHeight) * 100) / 100)
+}
+
 export interface QualityInput {
   /** Estimativa da conexao (kbps). 0 quando ainda nao ha medida. */
   availableKbps: number
@@ -107,6 +168,8 @@ export interface QualityInput {
    * a acontecer em teste: 360p num link local sem nenhum gargalo.
    */
   limitation: string | null
+  /** Largura real da fonte capturada. */
+  sourceWidth: number
   /** Altura real da fonte capturada. */
   sourceHeight: number
   /** Teto de altura do preset escolhido pelo usuario. */
@@ -146,6 +209,7 @@ export function decideQuality(input: QualityInput): QualityDecision {
     sendingKbps,
     sendingAudioKbps,
     limitation,
+    sourceWidth,
     sourceHeight,
     presetMaxHeight,
     presetMaxKbps,
@@ -201,10 +265,7 @@ export function decideQuality(input: QualityInput): QualityDecision {
   const targetHeight = Math.min(tier.height, presetMaxHeight, sourceHeight || tier.height)
 
   // scaleResolutionDownBy e razao, nao altura: 1 = tamanho original.
-  const scale =
-    sourceHeight > 0 && targetHeight > 0
-      ? Math.max(1, Math.round((sourceHeight / targetHeight) * 100) / 100)
-      : 1
+  const scale = evenFriendlyScale(sourceWidth, sourceHeight, targetHeight)
 
   // "Sem medida" continua sendo um estado proprio: e a diferenca entre "ainda
   // nao sei" e "sei, e cabe". So deixa de valer quando o usuario declarou um teto.

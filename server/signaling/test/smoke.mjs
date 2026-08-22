@@ -250,6 +250,77 @@ async function main() {
   viewer.close()
   hostAgain.close()
 
+  // ------------------------------------------- tunel cai: TODO MUNDO junto
+  /**
+   * O cenario que custou uma sessao inteira.
+   *
+   * Quando o tunel do Cloudflare reconecta, host e espectadores perdem o
+   * WebSocket no MESMO instante. A sala ficava vazia por um piscar de olhos e o
+   * servidor a apagava com "sala vazia" — cancelando junto o timer de retomada
+   * que tinha acabado de armar. O host voltava, nao achava a sala e criava
+   * outra, com codigo NOVO. Quem estava com o link antigo via "sala nao
+   * encontrada" e nao tinha como voltar.
+   */
+  const h2 = connect()
+  await h2.open()
+  h2.send({ type: 'create', name: 'host' })
+  const bemVindo2 = await h2.next()
+  const sala2 = bemVindo2.roomCode
+  const token2 = bemVindo2.hostToken
+
+  const v2 = connect()
+  await v2.open()
+  v2.send({ type: 'join', roomCode: sala2, name: 'ana', clientToken: 'token-da-ana' })
+  const vBemVindo = await v2.next()
+  const idDaAna = vBemVindo.selfId
+  await h2.next() // peer-joined
+
+  // Os dois caem juntos, host primeiro — a ordem que o tunel produz.
+  h2.close()
+  v2.close()
+  await new Promise((r) => setTimeout(r, 300))
+
+  const h3 = connect()
+  await h3.open()
+  h3.send({ type: 'create', name: 'host', resume: { roomCode: sala2, hostToken: token2 } })
+  const retomada = await h3.next()
+  check(
+    'sala sobrevive quando host e espectador caem juntos',
+    retomada.type === 'welcome' && retomada.roomCode === sala2,
+    JSON.stringify(retomada)
+  )
+
+  // ------------------------------------------- identidade estavel do viewer
+  /**
+   * Quem volta precisa voltar com o MESMO id de peer. Com id novo, o host trata
+   * a pessoa como desconhecida, monta uma RTCPeerConnection do zero e a imagem
+   * pisca — reconexao completa de midia por causa de um solucao de sinalizacao,
+   * que a midia P2P nem usa.
+   */
+  const v3 = connect()
+  await v3.open()
+  v3.send({ type: 'join', roomCode: sala2, name: 'ana', clientToken: 'token-da-ana' })
+  const anaDeVolta = await v3.next()
+  check(
+    'quem volta com o mesmo token mantem o mesmo id de peer',
+    anaDeVolta.type === 'welcome' && anaDeVolta.selfId === idDaAna,
+    `antes ${idDaAna}, agora ${anaDeVolta.selfId}`
+  )
+
+  const outro = connect()
+  await outro.open()
+  outro.send({ type: 'join', roomCode: sala2, name: 'bruno', clientToken: 'token-do-bruno' })
+  const doBruno = await outro.next()
+  check(
+    'pessoa diferente ganha id diferente',
+    doBruno.type === 'welcome' && doBruno.selfId !== idDaAna,
+    String(doBruno.selfId)
+  )
+
+  v3.close()
+  outro.close()
+  h3.close()
+
   console.log(`\n${passed} passaram, ${failed} falharam`)
   process.exit(failed === 0 ? 0 : 1)
 }

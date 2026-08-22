@@ -70,7 +70,13 @@ export const signalPayloadSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('renegotiate'),
     /** true = por favor, ofereca ja contando com TURN. */
-    relay: z.boolean().optional()
+    relay: z.boolean().optional(),
+    /**
+     * true = nao tenho conexao nenhuma deste lado (aba recarregada, primeira
+     * entrada). O host precisa CONSTRUIR uma conexao nova, nao reiniciar o ICE
+     * de uma que so existe para ele.
+     */
+    fresh: z.boolean().optional()
   })
 ])
 export type SignalPayload = z.infer<typeof signalPayloadSchema>

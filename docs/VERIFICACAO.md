@@ -25,6 +25,8 @@ Registrado para não ser refeito à toa:
 | Orçamento apertado a 150 kbps | áudio caiu para **48 kbps** e o vídeo sobreviveu em **360p** (427x240) |
 | Volta do aperto | sozinho, subiu para **720p** com áudio em **192 kbps** |
 | Autoplay do viewer | começa `muted=true`, `paused=false`, imagem em 1600x900 **antes** de qualquer clique |
+| Queda do túnel (WebSocket cortado no meio da transmissão) | vídeo avançou **19,86 s em 19,8 s** de relógio; **zero** frames em branco; sala inalterada |
+| Mesma medição sem cortar nada (controle) | pior congelamento **1,2 s** — a linha de base da tela parada; com o corte, 1,8 s |
 
 O teste de áudio vale a pena repetir do jeito que foi feito: tocar um tom puro
 numa aba do navegador e medir a frequência dominante do outro lado prova o
@@ -147,6 +149,47 @@ sem as variáveis da Cloudflare) e tente de novo. Depois de ~12 s a tela precisa
 dizer **"Não consegui conectar"**, listar os caminhos encontrados e explicar que
 falta retransmissão — nunca ficar em "Conectando…" indefinidamente.
 
+## 2b-sexies. Queda do túnel no meio da sessão
+
+O teste que nasceu da pior sessão até agora: o `cloudflared` perdeu a conexão
+QUIC duas vezes em 15 minutos, e cada queda custava um pedaço do filme e, na
+segunda, o link inteiro.
+
+**O detalhe que faz o teste valer:** o túnel **não derruba o servidor** — ele só
+mata os WebSockets. Matar o processo do servidor testa outra coisa (as salas
+vivem na memória dele, então elas somem e o host cria uma sala nova, o que é o
+comportamento correto). Para reproduzir o caso real, corte só o socket:
+
+```bash
+node server/signaling/test/smoke.mjs
+```
+
+As três verificações que cobrem isso rodam aí dentro: *sala sobrevive quando
+host e espectador caem juntos*, *quem volta com o mesmo token mantém o mesmo id
+de peer* e *pessoa diferente ganha id diferente*.
+
+**Para ver com os próprios olhos**, com alguém assistindo: reinicie o
+`cloudflared` (Ctrl+C e rode de novo). Isso derruba os WebSockets dos dois lados
+sem tocar no servidor — exatamente o que a queda de QUIC faz.
+
+**O que confirmar:**
+
+- a imagem **não pisca** e não volta ao início: o vídeo continua andando;
+- o código da sala continua **o mesmo** no painel do host;
+- ninguém vê "o host saiu", "Conectando…" nem "sala não encontrada";
+- no painel do host, a pessoa continua listada como `conectado`.
+
+Se a imagem piscar, voltou o bug de tratar queda de sinalização como queda de
+mídia. Se o código mudar, voltou o `sala vazia` apagando a sala dentro da janela
+de retomada.
+
+**Dica para o túnel em si:** as quedas eram do transporte QUIC (UDP). Forçar
+HTTP/2 deixa o túnel bem mais estável em redes que maltratam UDP:
+
+```bash
+npx cloudflared tunnel --url http://localhost:8787 --protocol http2
+```
+
 ## 2c. Voz e chat
 
 1. Clique em **Microfone** no host e em **Microfone** no viewer.
@@ -264,6 +307,7 @@ Durante a sessão, teste a resiliência:
 |---|---|
 | `qualityLimitationReason` | `cpu` = o encoder do host não dá conta; `bandwidth` = upload saturado |
 | Bitrate do Opus em `outbound-rtp` | deve **acompanhar** a decisão do painel; se ficar fixo em 256 kbps num link ruim, o governor do áudio parou de agir |
+| `hardware H.264 encoder only supports even sized frames` no log do Chromium | dimensão ímpar chegou ao encoder: a GPU recusou e caiu para software. Não aparece na interface — só aqui |
 | `encoderImplementation` | Nomes com `External`, `NvEnc`, `QuickSync` = GPU. `libvpx`/`OpenH264` = software |
 | `framesDropped` / `freezeCount` | Crescendo = congestionamento real, não impressão |
 | `candidate-pair` selecionado | `relay` de um dos lados = passando por TURN |

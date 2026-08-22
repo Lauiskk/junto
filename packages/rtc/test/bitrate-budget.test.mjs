@@ -19,6 +19,7 @@ import {
   MIN_VIDEO_KBPS,
   QualityGovernor,
   audioBudgetFor,
+  evenFriendlyScale,
   decideQuality,
   describeQuality,
   tierForBitrate
@@ -31,12 +32,16 @@ const preset1080 = {
 }
 const semAudioSaindo = { sendingAudioKbps: 0 }
 
+/** A maioria dos testes usa uma fonte 16:9 comum. */
+const fonte1080 = { sourceWidth: 1920, sourceHeight: 1080 }
+
 test('o caso real: 101 kbps a 1080p vira 360p', () => {
   const d = decideQuality({
     availableKbps: 101,
     sendingKbps: 101,
     ...semAudioSaindo,
     limitation: 'bandwidth',
+    sourceWidth: 1834,
     sourceHeight: 1032,
     ...preset1080
   })
@@ -55,6 +60,7 @@ test('o SEGUNDO caso real: o audio nao pode comer o link inteiro', () => {
     sendingKbps: 3,
     sendingAudioKbps: 88,
     limitation: 'bandwidth',
+    sourceWidth: 1834,
     sourceHeight: 1032,
     ...preset1080
   })
@@ -73,6 +79,7 @@ test('com banda de sobra, o audio volta ao valor do preset', () => {
     sendingKbps: 7000,
     sendingAudioKbps: 256,
     limitation: 'none',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -109,6 +116,7 @@ test('o preset continua sendo um teto, nunca um piso', () => {
     sendingKbps: 20_000,
     ...semAudioSaindo,
     limitation: 'none',
+    sourceWidth: 3840,
     sourceHeight: 2160,
     presetMaxHeight: 720,
     presetMaxKbps: 2500,
@@ -126,6 +134,7 @@ test('nunca aumenta a resolucao alem da fonte', () => {
     sendingKbps: 9000,
     ...semAudioSaindo,
     limitation: 'none',
+    sourceWidth: 854,
     sourceHeight: 480,
     ...preset1080
   })
@@ -140,6 +149,7 @@ test('sem medida ainda, parte do preset e espera a primeira amostra', () => {
     sendingKbps: 0,
     ...semAudioSaindo,
     limitation: 'none',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -159,6 +169,7 @@ test('tela parada NAO derruba a resolucao', () => {
     sendingKbps: 74,
     ...semAudioSaindo,
     limitation: 'none',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -173,6 +184,7 @@ test('bitrate baixo COM gargalo de banda derruba mesmo', () => {
     sendingKbps: 74,
     ...semAudioSaindo,
     limitation: 'bandwidth',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -189,6 +201,7 @@ test('sem estimativa, a medida soma video E audio', () => {
     sendingKbps: 800,
     sendingAudioKbps: 0,
     limitation: 'bandwidth',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -197,6 +210,7 @@ test('sem estimativa, a medida soma video E audio', () => {
     sendingKbps: 800,
     sendingAudioKbps: 900,
     limitation: 'bandwidth',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -213,6 +227,7 @@ test('gargalo de CPU nao e tratado como falta de banda', () => {
     sendingKbps: 500,
     ...semAudioSaindo,
     limitation: 'cpu',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -228,6 +243,7 @@ test('o teto por espectador divide o upload', () => {
     sendingKbps: 5000,
     ...semAudioSaindo,
     limitation: 'none',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -236,6 +252,7 @@ test('o teto por espectador divide o upload', () => {
     sendingKbps: 5000,
     ...semAudioSaindo,
     limitation: 'none',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     capKbps: 2000,
     ...preset1080
@@ -252,6 +269,7 @@ test('o piso autorizado levanta uma estimativa pessimista', () => {
     sendingKbps: 400,
     ...semAudioSaindo,
     limitation: 'bandwidth',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
@@ -260,6 +278,7 @@ test('o piso autorizado levanta uma estimativa pessimista', () => {
     sendingKbps: 400,
     ...semAudioSaindo,
     limitation: 'bandwidth',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     floorKbps: 4000,
     ...preset1080
@@ -280,6 +299,7 @@ test('o teto declarado vale ANTES da primeira medida', () => {
     sendingKbps: 0,
     ...semAudioSaindo,
     limitation: 'none',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     capKbps: 150,
     ...preset1080
@@ -297,6 +317,7 @@ test('o piso nao inventa banda quando nao ha medida nenhuma', () => {
     sendingKbps: 0,
     ...semAudioSaindo,
     limitation: 'none',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     floorKbps: 4000,
     ...preset1080
@@ -312,7 +333,8 @@ test('a primeira decisao sempre passa', () => {
       sendingKbps: 4000,
       ...semAudioSaindo,
       limitation: 'none',
-      sourceHeight: 1080,
+      sourceWidth: 1920,
+    sourceHeight: 1080,
       ...preset1080
     },
     1000
@@ -323,7 +345,7 @@ test('a primeira decisao sempre passa', () => {
 
 test('descer e rapido; subir e lento', () => {
   const g = new QualityGovernor()
-  const base = { sourceHeight: 1080, ...semAudioSaindo, ...preset1080 }
+  const base = { ...fonte1080, ...semAudioSaindo, ...preset1080 }
   let t = 0
 
   g.update({ availableKbps: 8000, sendingKbps: 8000, limitation: 'none', ...base }, t)
@@ -351,7 +373,7 @@ test('cortar o audio NAO espera a histerese', () => {
   // Enquanto o audio estiver grande demais para o link, o video nao tem de onde
   // sair. Esperar 5 s para apertar o audio e esperar 5 s de imagem congelada.
   const g = new QualityGovernor()
-  const base = { sourceHeight: 1080, ...semAudioSaindo, ...preset1080 }
+  const base = { ...fonte1080, ...semAudioSaindo, ...preset1080 }
 
   g.update({ availableKbps: 8000, sendingKbps: 8000, limitation: 'none', ...base }, 0)
   assert.equal(g.decision.audioKbps, 256)
@@ -366,7 +388,7 @@ test('cortar o audio NAO espera a histerese', () => {
 
 test('variacao pequena nao mexe no encoder', () => {
   const g = new QualityGovernor()
-  const base = { sourceHeight: 1080, ...semAudioSaindo, ...preset1080 }
+  const base = { ...fonte1080, ...semAudioSaindo, ...preset1080 }
   g.update({ availableKbps: 4000, sendingKbps: 4000, limitation: 'none', ...base }, 0)
 
   const igual = g.update(
@@ -382,10 +404,72 @@ test('a explicacao muda quando ha mais de um espectador', () => {
     sendingKbps: 400,
     ...semAudioSaindo,
     limitation: 'bandwidth',
+    sourceWidth: 1920,
     sourceHeight: 1080,
     ...preset1080
   })
   assert.match(describeQuality(d, 1), /upload/)
   assert.match(describeQuality(d, 3), /3 pessoas/)
   assert.match(describeQuality(d, 1), /audio \d+ kbps/, 'o painel precisa dizer o audio tambem')
+})
+
+test('a escala sempre produz largura E altura pares', () => {
+  /**
+   * Regressao de um log de sessao real, cheio de:
+   *   "Input video size is 803x432, but hardware H.264 encoder only supports
+   *    even sized frames."
+   *
+   * O Chromium nao falha de forma visivel quando isso acontece — ele cai para o
+   * encoder de software, gasta CPU e engasga. Nada na interface denuncia.
+   *
+   * As larguras abaixo sao as que apareceram no log: janelas de tamanho
+   * arbitrario, que e o caso em que a conta ingenua quebra.
+   */
+  const fontes = [
+    [1487, 800],
+    [1670, 897],
+    [1343, 722],
+    [895, 481],
+    [1113, 598],
+    [1067, 600],
+    [1920, 1080],
+    [1834, 1032],
+    [2560, 1440]
+  ]
+
+  for (const [w, h] of fontes) {
+    for (const alvo of [1080, 900, 720, 540, 432, 360]) {
+      const escala = evenFriendlyScale(w, h, alvo)
+      const saidaW = Math.round(w / escala)
+      const saidaH = Math.round(h / escala)
+      assert.equal(saidaW % 2, 0, `${w}x${h} alvo ${alvo}: largura ${saidaW} e impar`)
+      assert.equal(saidaH % 2, 0, `${w}x${h} alvo ${alvo}: altura ${saidaH} e impar`)
+      assert.ok(escala >= 1, 'nunca faz upscale')
+    }
+  }
+})
+
+test('a escala nao encolhe mais do que o necessario', () => {
+  // 1920x1080 -> 720p e um caso redondo: tem que sair exatamente 1.5.
+  assert.equal(evenFriendlyScale(1920, 1080, 720), 1.5)
+  assert.equal(evenFriendlyScale(1920, 1080, 360), 3)
+  // Alvo maior ou igual a fonte nao mexe em nada.
+  assert.equal(evenFriendlyScale(1280, 720, 720), 1)
+  assert.equal(evenFriendlyScale(1280, 720, 1080), 1)
+})
+
+test('a altura entregue fica perto da pedida', () => {
+  // Ceder alguns pixels para ganhar o encoder da GPU e o negocio; ceder muitos
+  // seria trocar um problema por outro.
+  for (const [w, h] of [[1487, 800], [1670, 897], [1113, 598]]) {
+    for (const alvo of [720, 540, 432, 360]) {
+      const escala = evenFriendlyScale(w, h, alvo)
+      const saidaH = Math.round(h / escala)
+      if (alvo >= h) continue
+      assert.ok(
+        saidaH <= alvo && saidaH >= alvo - 12,
+        `${w}x${h} alvo ${alvo}: saiu ${saidaH}, longe demais`
+      )
+    }
+  }
 })

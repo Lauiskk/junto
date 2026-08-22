@@ -191,8 +191,14 @@ export class HostSession implements Broadcaster {
       this.roomCode = welcome.roomCode
       this.selfId = welcome.selfId
       this.error = null
-      // Ao retomar uma sala apos queda, os espectadores que ficaram esperando
-      // precisam de conexoes novas — as antigas morreram junto com o socket.
+      /**
+       * Reencontro com quem ja estava na sala.
+       *
+       * Com identidade estavel no servidor, quem volta volta com o MESMO id —
+       * entao `connectToViewer` reconhece a pessoa e nao reconstroi nada se a
+       * midia dela continua de pe. Quem realmente perdeu a conexao ganha uma
+       * negociacao nova.
+       */
       for (const peer of welcome.peers) {
         if (peer.role === 'viewer') void this.connectToViewer(peer)
       }
@@ -203,7 +209,26 @@ export class HostSession implements Broadcaster {
       if (peer.role === 'viewer') void this.connectToViewer(peer)
     })
 
-    this.signaling.on('peer-left', (peerId) => this.dropViewer(peerId))
+    this.signaling.on('peer-left', (peerId) => {
+      const viewer = this.viewers.get(peerId)
+      /**
+       * Igual ao lado de quem assiste: o socket de sinalizacao caiu, a midia
+       * nao. Derrubar a RTCPeerConnection aqui e o que fazia a imagem do outro
+       * lado piscar quando o tunel reconectava.
+       *
+       * Se a pessoa realmente fechou a aba, a conexao cai sozinha em poucos
+       * segundos e o `sweepStaleViewers` limpa. Esperar por isso custa um card
+       * a mais na lista por meio minuto; nao esperar custa a transmissao.
+       */
+      if (viewer && viewer.pc.connectionState === 'connected') {
+        console.log(`[host] ${viewer.name} saiu da sinalizacao, mas a midia continua`)
+        // De proposito NAO marca `disconnectedSince`: quem marca isso e o
+        // estado real da conexao. Marcar aqui faria o `sweepStaleViewers`
+        // derrubar, 30 s depois, alguem que esta assistindo sem problema nenhum.
+        return
+      }
+      this.dropViewer(peerId)
+    })
 
     this.signaling.on('signal', ({ from, payload }) => {
       void this.handleSignal(from, payload)
@@ -455,7 +480,24 @@ export class HostSession implements Broadcaster {
   // -- conexao por espectador ------------------------------------------------
 
   private async connectToViewer(peer: Peer): Promise<void> {
-    if (this.disposed || this.viewers.has(peer.id)) return
+    if (this.disposed) return
+
+    /**
+     * Ja conhecemos esta pessoa?
+     *
+     * Se a midia dela continua conectada, nao ha nada a fazer — refazer a
+     * conexao seria justamente a "piscada" que o solucao no tunel provocava. Se
+     * a conexao morreu de verdade, a antiga nao serve e vai fora antes de
+     * construir a nova.
+     */
+    const existente = this.viewers.get(peer.id)
+    if (existente) {
+      const estado = existente.pc.connectionState
+      if (estado !== 'failed' && estado !== 'closed') return
+      console.warn(`[host] reconstruindo a conexao com ${peer.name} (estava ${estado})`)
+      this.teardownViewer(existente)
+      this.viewers.delete(peer.id)
+    }
 
     const pc = new RTCPeerConnection({
       iceServers: this.iceServers,
@@ -710,6 +752,7 @@ export class HostSession implements Broadcaster {
       sendingKbps: stats.video.kbps,
       sendingAudioKbps: stats.audio.kbps,
       limitation: stats.video.limitation,
+      sourceWidth: track.getSettings().width ?? 0,
       sourceHeight: track.getSettings().height ?? 0,
       presetMaxHeight: this.preset.maxHeight,
       presetMaxKbps: this.preset.maxBitrateKbps,
@@ -829,8 +872,29 @@ export class HostSession implements Broadcaster {
      */
     if (payload.kind === 'renegotiate') {
       console.log(
-        `[host] ${viewer.name} pediu renegociacao${payload.relay ? ' (via TURN)' : ''}`
+        `[host] ${viewer.name} pediu renegociacao${payload.relay ? ' (via TURN)' : ''}${payload.fresh ? ' (conexao nova)' : ''}`
       )
+
+      /**
+       * `fresh` significa que do outro lado nao existe conexao nenhuma — aba
+       * recarregada, tipicamente. Reiniciar o ICE da conexao antiga nao serve:
+       * ela tem credenciais DTLS de uma pagina que nao existe mais. O caminho
+       * e jogar fora e construir de novo.
+       */
+      if (payload.fresh) {
+        const nome = viewer.name
+        const peerId = viewer.peerId
+        this.teardownViewer(viewer)
+        this.viewers.delete(peerId)
+        await this.connectToViewer({
+          id: peerId,
+          name: nome,
+          role: 'viewer',
+          joinedAt: Date.now()
+        })
+        return
+      }
+
       viewer.restarted = false
       await this.negotiate(viewer, true)
     }

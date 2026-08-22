@@ -169,6 +169,23 @@ export class ViewerSession {
         error: null,
         diagnosis: { ...this.state.diagnosis, turnAvailable }
       })
+
+      /**
+       * Sem conexao deste lado, PEDE a oferta em vez de esperar.
+       *
+       * Antes o viewer era totalmente passivo: dependia de o host reparar no
+       * `peer-joined` e ofertar. Isso quebrou no momento em que a identidade
+       * passou a ser estavel — recarregar a aba devolve o MESMO id de peer, o
+       * host reconhece alguem que ele acha que ja esta conectado, e nao oferta
+       * nada. A pagina recarregada ficava esperando para sempre.
+       *
+       * `fresh` e a informacao que so este lado tem: "nao existe conexao aqui".
+       */
+      const host = welcome.peers.find((peer) => peer.role === 'host')
+      if (host && !this.pc) {
+        this.hostPeerId = host.id
+        this.requestRenegotiate(this.forceRelay, true)
+      }
     })
 
     this.signaling.on('signal', ({ from, payload }) => {
@@ -176,17 +193,33 @@ export class ViewerSession {
     })
 
     this.signaling.on('peer-left', (peerId) => {
-      if (peerId === this.hostPeerId) {
-        // O host caiu. Nao encerramos a sala: ele tem uma janela para voltar e,
-        // quando voltar, chega uma oferta nova e a imagem retorna sozinha.
-        this.teardownPeer()
-        this.patch({
-          stream: null,
-          source: null,
-          connectionState: 'disconnected',
-          error: 'o host saiu — aguardando ele voltar'
-        })
+      if (peerId !== this.hostPeerId) return
+
+      /**
+       * O socket de SINALIZACAO do host caiu — a midia nao passa por ali.
+       *
+       * Este era o erro que mais doia na pratica: um solucao no tunel derrubava
+       * o WebSocket e o app respondia jogando fora uma RTCPeerConnection que
+       * continuava entregando video perfeitamente. Quem assistia via a imagem
+       * sumir e voltar alguns segundos depois, tendo perdido um pedaco do
+       * filme, por um problema que nao tinha nada a ver com o video.
+       *
+       * Enquanto o par estiver conectado, nao se toca em nada. Se a conexao
+       * tambem cair de verdade, o proprio `connectionState` avisa e a
+       * recuperacao normal entra em acao.
+       */
+      if (this.pc?.connectionState === 'connected') {
+        console.log('[viewer] host saiu da sinalizacao, mas a midia continua de pe')
+        return
       }
+
+      this.teardownPeer()
+      this.patch({
+        stream: null,
+        source: null,
+        connectionState: 'disconnected',
+        error: 'o host saiu — aguardando ele voltar'
+      })
     })
 
     this.signaling.on('error', ({ code, message }) => {
@@ -307,8 +340,19 @@ export class ViewerSession {
 
   private async handleSignal(from: string, payload: SignalPayload): Promise<void> {
     if (payload.kind === 'sdp' && payload.type === 'offer') {
-      // Host novo (por exemplo, voltou de uma queda): recomeca do zero.
-      if (this.hostPeerId && this.hostPeerId !== from) this.teardownPeer()
+      /**
+       * Host com id diferente e sinal de sala nova (a antiga expirou). Mas so
+       * derruba se a conexao atual ja nao estiver servindo: com identidade
+       * estavel no servidor, o host que retoma volta com o MESMO id, e cair
+       * aqui significa que algo realmente mudou.
+       */
+      if (this.hostPeerId && this.hostPeerId !== from) {
+        if (this.pc?.connectionState === 'connected') {
+          console.warn('[viewer] oferta de um host diferente com a midia de pe; ignorando')
+          return
+        }
+        this.teardownPeer()
+      }
       this.hostPeerId = from
 
       /**
@@ -491,6 +535,7 @@ export class ViewerSession {
     if (turnAvailable && !triedRelay) {
       this.forceRelay = true
       this.teardownPeer(true)
+      // Conexao descartada: o que vem a seguir precisa ser construido do zero.
       // `timedOut` volta a false: ainda estamos TENTANDO, e a tela nao deve
       // anunciar derrota enquanto ha uma estrategia em andamento.
       this.patch({
@@ -503,7 +548,7 @@ export class ViewerSession {
         error: 'conexao direta nao fechou — tentando pelo servidor de retransmissao'
       })
       // A oferta e sempre do host; so ele pode reiniciar o ICE.
-      this.requestRenegotiate(true)
+      this.requestRenegotiate(true, true)
       return
     }
 
@@ -514,9 +559,9 @@ export class ViewerSession {
     })
   }
 
-  private requestRenegotiate(relay: boolean): void {
+  private requestRenegotiate(relay: boolean, fresh = false): void {
     if (!this.hostPeerId) return
-    this.signaling.signal(this.hostPeerId, { kind: 'renegotiate', relay })
+    this.signaling.signal(this.hostPeerId, { kind: 'renegotiate', relay, fresh })
   }
 
   /** Nova tentativa a pedido de quem esta assistindo (botao na tela). */
@@ -528,7 +573,7 @@ export class ViewerSession {
       diagnosis: { ...this.state.diagnosis, timedOut: false, candidateTypes: [] }
     })
     // Sem host conhecido ainda, reentrar na sala e o unico caminho.
-    if (this.hostPeerId) this.requestRenegotiate(this.forceRelay)
+    if (this.hostPeerId) this.requestRenegotiate(this.forceRelay, true)
     else this.start()
   }
 

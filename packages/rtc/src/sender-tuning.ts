@@ -13,41 +13,69 @@ type SendParameters = RTCRtpSendParameters & {
   degradationPreference?: QualityPreset['degradationPreference']
 }
 
+/**
+ * Uma fila por sender para as escritas de parametros.
+ *
+ * `getParameters()` devolve um objeto com um id de transacao, e `setParameters`
+ * so aceita o id mais recente. Dois ajustes simultaneos no MESMO sender — o
+ * governor reagindo a uma amostra enquanto o usuario troca o preset, por
+ * exemplo — fazem o segundo chegar com o id ja gasto, e o Chromium recusa:
+ *
+ *   Failed to set parameters since getParameters() has never been called on
+ *   this sender (INVALID_STATE)
+ *
+ * O erro aparecia no log de uma sessao real. O efeito nao e visivel na hora (o
+ * ajuste perdido volta na proxima amostra), mas perder um ajuste justamente
+ * durante um congestionamento e o pior momento possivel. Serializar resolve sem
+ * travar nada: cada escrita espera a anterior terminar.
+ */
+const filaDoSender = new WeakMap<RTCRtpSender, Promise<void>>()
+
+function emFila(sender: RTCRtpSender, tarefa: () => Promise<void>): Promise<void> {
+  const anterior = filaDoSender.get(sender) ?? Promise.resolve()
+  const proxima = anterior.then(tarefa, tarefa)
+  filaDoSender.set(sender, proxima)
+  return proxima
+}
+
 export async function applyPresetToSender(
   sender: RTCRtpSender,
   preset: QualityPreset
 ): Promise<void> {
   if (!sender.track) return
 
-  const params = sender.getParameters() as SendParameters
-
-  // Chrome exige que encodings exista antes de setParameters.
-  if (!params.encodings || params.encodings.length === 0) {
-    params.encodings = [{}]
-  }
-
   const isVideo = sender.track.kind === 'video'
-  const encoding = params.encodings[0]!
 
-  if (isVideo) {
-    // Bitrate e resolucao de video NAO sao definidos aqui de proposito: quem
-    // manda neles e o QualityGovernor, que enxerga a banda medida. Ter dois
-    // donos do mesmo botao foi o que produziu 1080p a 101 kbps.
-    encoding.maxFramerate = preset.maxFramerate
-    params.degradationPreference = preset.degradationPreference
-  } else {
-    // Idem para o audio, e pelo mesmo motivo elevado a segunda potencia: o
-    // preset fixava 256 kbps aqui e, num link de 100 kbps, o audio consumia o
-    // link inteiro antes de sobrar qualquer coisa para a imagem. O valor do
-    // preset e o TETO; quem escolhe o numero do momento e o governor.
-    encoding.maxBitrate = preset.audioBitrateKbps * 1000
-  }
+  await emFila(sender, async () => {
+    const params = sender.getParameters() as SendParameters
 
-  try {
-    await sender.setParameters(params)
-  } catch (err) {
-    console.warn('[rtc] setParameters falhou:', err)
-  }
+    // Chrome exige que encodings exista antes de setParameters.
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}]
+    }
+
+    const encoding = params.encodings[0]!
+
+    if (isVideo) {
+      // Bitrate e resolucao de video NAO sao definidos aqui de proposito: quem
+      // manda neles e o QualityGovernor, que enxerga a banda medida. Ter dois
+      // donos do mesmo botao foi o que produziu 1080p a 101 kbps.
+      encoding.maxFramerate = preset.maxFramerate
+      params.degradationPreference = preset.degradationPreference
+    } else {
+      // Idem para o audio, e pelo mesmo motivo elevado a segunda potencia: o
+      // preset fixava 256 kbps aqui e, num link de 100 kbps, o audio consumia o
+      // link inteiro antes de sobrar qualquer coisa para a imagem. O valor do
+      // preset e o TETO; quem escolhe o numero do momento e o governor.
+      encoding.maxBitrate = preset.audioBitrateKbps * 1000
+    }
+
+    try {
+      await sender.setParameters(params)
+    } catch (err) {
+      console.warn('[rtc] setParameters falhou:', err)
+    }
+  })
 }
 
 /**
@@ -62,17 +90,20 @@ export async function applyQualityDecision(
   decision: { maxBitrateKbps: number; scaleResolutionDownBy: number }
 ): Promise<void> {
   if (!sender.track || sender.track.kind !== 'video') return
-  const params = sender.getParameters() as SendParameters
-  if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
 
-  params.encodings[0]!.maxBitrate = decision.maxBitrateKbps * 1000
-  params.encodings[0]!.scaleResolutionDownBy = decision.scaleResolutionDownBy
+  await emFila(sender, async () => {
+    const params = sender.getParameters() as SendParameters
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
 
-  try {
-    await sender.setParameters(params)
-  } catch (err) {
-    console.warn('[rtc] applyQualityDecision falhou:', err)
-  }
+    params.encodings[0]!.maxBitrate = decision.maxBitrateKbps * 1000
+    params.encodings[0]!.scaleResolutionDownBy = decision.scaleResolutionDownBy
+
+    try {
+      await sender.setParameters(params)
+    } catch (err) {
+      console.warn('[rtc] applyQualityDecision falhou:', err)
+    }
+  })
 }
 
 /**
@@ -88,18 +119,21 @@ export async function applyAudioBitrate(
   kbps: number
 ): Promise<void> {
   if (!sender.track || sender.track.kind !== 'audio') return
-  const params = sender.getParameters() as SendParameters
-  if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
 
-  const alvo = kbps * 1000
-  if (params.encodings[0]!.maxBitrate === alvo) return
-  params.encodings[0]!.maxBitrate = alvo
+  await emFila(sender, async () => {
+    const params = sender.getParameters() as SendParameters
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
 
-  try {
-    await sender.setParameters(params)
-  } catch (err) {
-    console.warn('[rtc] applyAudioBitrate falhou:', err)
-  }
+    const alvo = kbps * 1000
+    if (params.encodings[0]!.maxBitrate === alvo) return
+    params.encodings[0]!.maxBitrate = alvo
+
+    try {
+      await sender.setParameters(params)
+    } catch (err) {
+      console.warn('[rtc] applyAudioBitrate falhou:', err)
+    }
+  })
 }
 
 /**

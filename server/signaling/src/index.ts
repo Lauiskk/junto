@@ -61,6 +61,20 @@ interface Room {
    * trava de verdade continua sendo a senha da sala.
    */
   blocked: Set<string>
+  /**
+   * Identidade -> id de peer, para que a MESMA pessoa volte com o MESMO id.
+   *
+   * Isto existe por causa de um teste real: o tunel do Cloudflare derrubou a
+   * conexao QUIC no meio da sessao e todo mundo reconectou em 3 segundos. Como
+   * cada `join` gerava um id novo, o host via um espectador desconhecido,
+   * construia uma RTCPeerConnection do zero e a imagem de quem assistia
+   * "piscava" — reconexao completa de midia por causa de um solucao de
+   * sinalizacao, que a midia P2P nem usa.
+   *
+   * A chave e o token que o navegador guarda no localStorage; para o host, o
+   * proprio hostToken da sala.
+   */
+  identities: Map<string, string>
 }
 
 const rooms = new Map<string, Room>()
@@ -271,14 +285,17 @@ wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
             clients: new Map(),
             createdAt: Date.now(),
             graceTimer: null,
-            blocked: new Set()
+            blocked: new Set(),
+            identities: new Map()
           }
           rooms.set(code, room)
           log(`sala ${code} criada`)
         }
 
+        // O host que retoma continua sendo o mesmo peer para quem assiste; um
+        // id novo faria o viewer jogar fora a conexao que ainda funcionava.
         const self: Client = {
-          id: randomUUID(),
+          id: room.identities.get(room.hostToken) ?? randomUUID(),
           name: message.name,
           role: 'host',
           socket,
@@ -290,6 +307,7 @@ wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
         }
         client = self
         room.hostId = self.id
+        room.identities.set(room.hostToken, self.id)
         room.clients.set(self.id, self)
 
         send(self, {
@@ -332,7 +350,7 @@ wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
         }
 
         const self: Client = {
-          id: randomUUID(),
+          id: (message.clientToken && room.identities.get(message.clientToken)) || randomUUID(),
           name: message.name,
           role: 'viewer',
           socket,
@@ -343,6 +361,10 @@ wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
           clientToken: message.clientToken ?? null
         }
         client = self
+        if (message.clientToken) room.identities.set(message.clientToken, self.id)
+        // Socket antigo da mesma pessoa ainda pendurado (o `close` pode demorar
+        // a chegar): o `set` abaixo ja o substitui no mapa, e o guard no
+        // handler de `close` impede que a saida dele derrube a entrada nova.
         room.clients.set(self.id, self)
 
         send(self, {
@@ -446,6 +468,16 @@ wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
     const room = rooms.get(client.roomCode)
     if (!room) return
 
+    /**
+     * A mesma pessoa ja voltou e ocupou este id?
+     *
+     * Reconexao rapida entrega o `close` do socket velho DEPOIS do `join` do
+     * novo. Sem esta checagem de identidade do objeto, a saida do socket morto
+     * apagaria a conexao viva e mandaria um `peer-left` que derruba a
+     * transmissao de quem acabou de voltar.
+     */
+    if (room.clients.get(client.id) !== client) return
+
     room.clients.delete(client.id)
     broadcast(room, { type: 'peer-left', peerId: client.id })
 
@@ -457,7 +489,20 @@ wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
       log(
         `host saiu da sala ${room.code}; aguardando retomada por ${HOST_GRACE_MS / 1000}s`
       )
-    } else if (room.clients.size === 0 && !room.hostId) {
+    } else if (room.clients.size === 0 && !room.hostId && !room.graceTimer) {
+      /**
+       * `!room.graceTimer` e o que faltava, e custou uma sessao inteira.
+       *
+       * Quando o tunel cai, host e espectadores perdem o socket no MESMO
+       * instante. O host saia primeiro (armando a janela de retomada) e o
+       * espectador logo atras — e este ramo, sem olhar a janela, apagava a sala
+       * com um `sala vazia` que cancelava o proprio timer de graca. O host
+       * voltava, nao achava a sala, criava outra com codigo NOVO, e todo mundo
+       * que ainda estava com o link antigo via "sala nao encontrada".
+       *
+       * Sala vazia durante a janela de retomada nao e sala abandonada: e
+       * exatamente o estado que a janela existe para cobrir.
+       */
       closeRoom(room, 'sala vazia')
     }
   })
