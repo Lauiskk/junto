@@ -27,6 +27,7 @@ Registrado para não ser refeito à toa:
 | Autoplay do viewer | começa `muted=true`, `paused=false`, imagem em 1600x900 **antes** de qualquer clique |
 | Queda do túnel (WebSocket cortado no meio da transmissão) | vídeo avançou **19,86 s em 19,8 s** de relógio; **zero** frames em branco; sala inalterada |
 | Mesma medição sem cortar nada (controle) | pior congelamento **1,2 s** — a linha de base da tela parada; com o corte, 1,8 s |
+| Retomada do Modo Cinema | host morto a 85% de um arquivo de 271 MB; retomou **em 85%** e o SHA-256 do arquivo montado bateu com o original |
 
 O teste de áudio vale a pena repetir do jeito que foi feito: tocar um tom puro
 numa aba do navegador e medir a frequência dominante do outro lado prova o
@@ -189,6 +190,45 @@ HTTP/2 deixa o túnel bem mais estável em redes que maltratam UDP:
 ```bash
 npx cloudflared tunnel --url http://localhost:8787 --protocol http2
 ```
+
+## 2b-septies. Retomada do Modo Cinema
+
+Um filme de 2 GB leva minutos para transferir, e nesse tempo o host pode
+reiniciar. Antes, tudo que já tinha chegado ia para o lixo.
+
+1. No host, **Arquivo do PC**, escolha um vídeo grande e ligue o **Modo Cinema**.
+2. Espere a barra do espectador passar de uns 30%.
+3. **Mate o app do host** (fechar a janela serve).
+4. Abra o app de novo e escolha **o mesmo arquivo**; ligue o Modo Cinema.
+
+**O que confirmar:**
+
+- ao reiniciar, a barra do espectador **continua onde estava** — se voltar a 0%,
+  voltou o `film-cancel` vazio apagando o progresso de quem já baixou;
+- ao recarregar o arquivo, a transferência **retoma daquele ponto**, não do zero;
+- no console do host aparece `retomando o filme para <nome> em N%`.
+
+**A verificação que fecha o caso** é comparar os bytes, porque retomar na posição
+errada produz um arquivo do tamanho certo com o conteúdo embaralhado — que parece
+sucesso. No espectador:
+
+```js
+const v = document.querySelector('video')
+const buf = await (await fetch(v.src)).arrayBuffer()
+const d = await crypto.subtle.digest('SHA-256', buf)
+console.log(buf.byteLength, [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join(''))
+```
+
+E no computador do host:
+
+```bash
+node -e "const f=require('fs'),c=require('crypto'),h=c.createHash('sha256');f.createReadStream(process.argv[1]).on('data',d=>h.update(d)).on('end',()=>console.log(f.statSync(process.argv[1]).size,h.digest('hex')))" "CAMINHO/DO/FILME.mp4"
+```
+
+Os dois números precisam bater. **Aviso sobre falso negativo:** num Chrome
+*headless* o vídeo montado pode aparecer como `0x0` mesmo estando perfeito — é
+falta de codec proprietário, não corrupção. Foi o que aconteceu na medição
+registrada acima, e só o hash desfez a dúvida.
 
 ## 2c. Voz e chat
 

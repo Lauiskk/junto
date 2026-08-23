@@ -642,9 +642,25 @@ export class ViewerSession {
         return
 
       case 'film-offer': {
-        // Recomecar do zero se a oferta mudou; aceitar duas vezes o mesmo filme
-        // duplicaria os bytes recebidos e corromperia o arquivo montado.
-        if (this.filmReceiver?.name === message.name) return
+        /**
+         * Oferta repetida do MESMO arquivo = retomada, nao recomeco.
+         *
+         * Antes isto simplesmente retornava, para nao duplicar bytes. O efeito
+         * colateral era pior que o problema: quando o host reiniciava no meio de
+         * um filme de 2 GB, a oferta chegava de novo, o viewer a ignorava e a
+         * transferencia morria ali — sem erro, sem barra andando, sem nada.
+         *
+         * Agora respondemos com a posicao exata que ja temos e o host continua
+         * dali.
+         */
+        const atual = this.filmReceiver
+        if (atual?.matches(message.name, message.size)) {
+          if (atual.complete) return
+          atual.resumeSession()
+          this.sendControl({ type: 'film-accept', from: atual.received })
+          return
+        }
+
         this.releaseFilmUrl()
         this.filmReceiver = new FilmReceiver(message.name, message.size, message.mimeType)
         this.patch({
@@ -657,7 +673,7 @@ export class ViewerSession {
             url: null
           }
         })
-        this.sendControl({ type: 'film-accept' })
+        this.sendControl({ type: 'film-accept', from: 0 })
         return
       }
 

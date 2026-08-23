@@ -72,6 +72,7 @@ Nada aqui é estimativa; são leituras de sessões reais, com o método descrito
 | Aperto de banda (150 kbps) | áudio cai para **48 kbps** e o vídeo sobrevive em **360p** — antes, 88 kbps de som e 3 de imagem |
 | Recuperação | 360p/48 kbps voltam sozinhos a **720p/192 kbps** quando a banda libera |
 | Queda do túnel no meio da sessão | vídeo avançou **19,86 s em 19,8 s** de relógio, **zero** frames em branco, sala inalterada |
+| Retomada do Modo Cinema | host morto a 85% de 271 MB; retomou em 85% e o **SHA-256 bateu** com o original |
 
 ## Por que o host é um app nativo
 
@@ -174,6 +175,14 @@ Estão comentadas no código, mas em resumo:
   inteiro no buffer do canal e estourar a memória antes de um byte sair. E os
   chunks são dobrados em `Blob` a cada 8 MB, o que mantém o heap pequeno mesmo
   num arquivo de vários GB.
+- **A transferência é retomável** ([`film-transfer.ts`](packages/rtc/src/film-transfer.ts))
+  — quem recebe é o único que sabe quanto já tem, então é ele quem dita o ponto
+  de partida (`film-accept { from }`). Um filme de 2 GB leva minutos, e nesse
+  tempo o host pode reiniciar; antes, tudo ia para o lixo. A ideia do offset
+  explícito veio do protocolo do [Osmium](https://github.com/osmiumchat/proto).
+  O receptor também **descarta bytes excedentes**: aceitar um pedaço repetido
+  produziria um arquivo do tamanho certo com o conteúdo embaralhado, que é pior
+  que falhar, porque parece que deu certo.
 - **Diagnóstico de rede antes de entrar** ([`network-check.ts`](packages/rtc/src/network-check.ts))
   — testa STUN e força um caminho `relay` para saber se o TURN realmente
   funciona. Sem isso, falhar em CGNAT é indistinguível de "o app está quebrado".

@@ -10,6 +10,14 @@
  * teto da qualidade. E o mesmo modelo do Plex Watch Together.
  *
  * O preco: e preciso esperar a transferencia antes de comecar.
+ *
+ * A transferencia e RETOMAVEL, e isso importa mais do que parece: um filme de
+ * 2 GB leva minutos, e no meio desse tempo o host pode reiniciar o app, a
+ * conexao pode falhar e ser reconstruida — situacoes que ja aconteceram em
+ * sessao real. Sem retomada, cada uma delas jogava fora tudo que ja tinha
+ * chegado e recomecava do zero. Quem recebe informa de que byte continuar, e
+ * quem envia comeca dali. A ideia veio do protocolo do Osmium, que modela
+ * download por partes com offset explicito.
  */
 
 /**
@@ -58,12 +66,24 @@ export class FilmSender {
     this.cancelled = true
   }
 
-  async send(onProgress: (progress: TransferProgress) => void): Promise<void> {
+  /**
+   * @param from Byte de onde continuar. Quem recebe e quem sabe esse numero.
+   */
+  async send(
+    onProgress: (progress: TransferProgress) => void,
+    from = 0
+  ): Promise<void> {
     this.channel.binaryType = 'arraybuffer'
     this.channel.bufferedAmountLowThreshold = LOW_WATER_MARK
     this.startedAt = Date.now()
 
-    let offset = 0
+    const inicio = Math.min(Math.max(0, Math.floor(from)), this.file.size)
+    let offset = inicio
+
+    // Avisa a posicao inicial antes do primeiro chunk: retomando em 85%, o
+    // painel do host precisa mostrar 85% de cara, e nao voltar visualmente a
+    // zero para so depois pular.
+    onProgress({ sent: offset, total: this.file.size, bytesPerSecond: 0 })
 
     while (offset < this.file.size) {
       if (this.cancelled) return
@@ -82,10 +102,13 @@ export class FilmSender {
       offset += buffer.byteLength
 
       const seconds = (Date.now() - this.startedAt) / 1000
+      // A taxa mede os bytes DESTA sessao. Dividir o total pelo tempo daria um
+      // numero fantasioso ao retomar perto do fim.
+      const novos = offset - inicio
       onProgress({
         sent: offset,
         total: this.file.size,
-        bytesPerSecond: seconds > 0 ? Math.round(offset / seconds) : 0
+        bytesPerSecond: seconds > 0 ? Math.round(novos / seconds) : 0
       })
     }
   }
@@ -110,6 +133,8 @@ export class FilmReceiver {
   private pendingBytes = 0
   private folded: Blob | null = null
   private startedAt = Date.now()
+  /** Quanto ja havia quando a sessao atual de transferencia comecou. */
+  private baseline = 0
 
   received = 0
 
@@ -119,18 +144,54 @@ export class FilmReceiver {
     readonly mimeType: string
   ) {}
 
+  /**
+   * E o mesmo arquivo que ja estamos recebendo?
+   *
+   * Nome mais tamanho: dois filmes diferentes com o mesmo nome existem, mas com
+   * o mesmo nome E o mesmo numero exato de bytes, na pratica, nao.
+   */
+  matches(name: string, total: number): boolean {
+    return this.name === name && this.total === total
+  }
+
+  /**
+   * Recomecando a receber depois de uma queda: zera a janela de medicao de
+   * velocidade, sem tocar nos bytes ja guardados.
+   */
+  resumeSession(): void {
+    this.baseline = this.received
+    this.startedAt = Date.now()
+  }
+
   push(chunk: ArrayBuffer): TransferProgress {
-    this.pending.push(chunk)
-    this.pendingBytes += chunk.byteLength
-    this.received += chunk.byteLength
+    /**
+     * Nunca aceitar mais bytes do que o arquivo tem.
+     *
+     * Se por algum motivo quem envia recomecar de uma posicao anterior a que ja
+     * temos, aceitar tudo produziria um arquivo maior que o original e com o
+     * conteudo embaralhado — que e pior que uma falha, porque parece que deu
+     * certo. Cortar mantem o tamanho correto.
+     */
+    const cabe = this.total - this.received
+    if (cabe <= 0) return this.progress()
+    const util = chunk.byteLength > cabe ? chunk.slice(0, cabe) : chunk
+
+    this.pending.push(util)
+    this.pendingBytes += util.byteLength
+    this.received += util.byteLength
 
     if (this.pendingBytes >= FOLD_THRESHOLD) this.fold()
 
+    return this.progress()
+  }
+
+  private progress(): TransferProgress {
     const seconds = (Date.now() - this.startedAt) / 1000
+    const novos = this.received - this.baseline
     return {
       sent: this.received,
       total: this.total,
-      bytesPerSecond: seconds > 0 ? Math.round(this.received / seconds) : 0
+      bytesPerSecond: seconds > 0 ? Math.round(novos / seconds) : 0
     }
   }
 

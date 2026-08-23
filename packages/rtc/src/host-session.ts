@@ -368,6 +368,21 @@ export class HostSession implements Broadcaster {
   }
 
   stopFilm(reason?: string): void {
+    /**
+     * So avisa que cancelou se havia mesmo um filme sendo oferecido.
+     *
+     * `film-cancel` manda quem recebe jogar fora tudo que ja baixou — e faz
+     * sentido, porque o host desistiu daquele arquivo. O que nao faz sentido e
+     * mandar esse recado quando nao havia filme nenhum.
+     *
+     * Era exatamente o que acontecia depois de reiniciar o app: `filmFile` volta
+     * nulo, o usuario escolhe o MESMO arquivo, o fluxo chama `stopFilm()` por
+     * precaucao antes de carregar, e esse cancelamento vazio apagava os 77% que
+     * a outra pessoa ja tinha na mao. A retomada nunca chegava a acontecer
+     * porque nao sobrava nada de onde retomar.
+     */
+    const haviaFilme = this.filmFile !== null
+
     this.filmFile = null
     this.filmDurationSec = null
     for (const viewer of this.viewers.values()) {
@@ -375,7 +390,7 @@ export class HostSession implements Broadcaster {
       viewer.filmSender = null
       viewer.filmProgress = null
     }
-    this.broadcastControl({ type: 'film-cancel', reason })
+    if (haviaFilme) this.broadcastControl({ type: 'film-cancel', reason })
     this.publish()
   }
 
@@ -392,28 +407,47 @@ export class HostSession implements Broadcaster {
     }
   }
 
-  private async sendFilmTo(viewer: ViewerPeer): Promise<void> {
+  private async sendFilmTo(viewer: ViewerPeer, from = 0): Promise<void> {
     const file = this.filmFile
     const channel = viewer.filmChannel
     if (!file || !channel || viewer.filmSender) return
     if (channel.readyState !== 'open') return
 
+    if (from > 0) {
+      const pct = Math.round((from / Math.max(1, file.size)) * 100)
+      console.log(`[host] retomando o filme para ${viewer.name} em ${pct}%`)
+    }
+
     const sender = new FilmSender(channel, file)
     viewer.filmSender = sender
-    viewer.filmProgress = { sent: 0, total: file.size, bytesPerSecond: 0, ready: false }
+    viewer.filmProgress = { sent: from, total: file.size, bytesPerSecond: 0, ready: false }
 
     try {
-      await sender.send((progress) => {
-        viewer.filmProgress = {
-          sent: progress.sent,
-          total: progress.total,
-          bytesPerSecond: progress.bytesPerSecond,
-          ready: viewer.filmProgress?.ready ?? false
-        }
-        this.publish()
-      })
+      await sender.send(
+        (progress) => {
+          viewer.filmProgress = {
+            sent: progress.sent,
+            total: progress.total,
+            bytesPerSecond: progress.bytesPerSecond,
+            ready: viewer.filmProgress?.ready ?? false
+          }
+          this.publish()
+        },
+        from
+      )
     } catch (err) {
       console.warn('[host] envio do filme falhou:', err)
+    } finally {
+      /**
+       * Liberar o slot quando o envio nao chegou ao fim.
+       *
+       * `sendFilmTo` recusa comecar se ja existe um sender. Deixar um sender
+       * morto pendurado aqui significaria que o pedido de retomada, quando
+       * chegasse, seria ignorado em silencio — o inverso exato do que esta
+       * funcao passou a existir para fazer.
+       */
+      const enviou = viewer.filmProgress?.sent ?? 0
+      if (enviou < file.size) viewer.filmSender = null
     }
   }
 
@@ -937,7 +971,7 @@ export class HostSession implements Broadcaster {
         return
       }
       case 'film-accept':
-        void this.sendFilmTo(viewer)
+        void this.sendFilmTo(viewer, message.from ?? 0)
         return
 
       case 'film-progress':

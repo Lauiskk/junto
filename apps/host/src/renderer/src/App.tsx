@@ -276,7 +276,12 @@ export function App(): ReactElement {
         setSource(null)
         setMode('file')
         setCinema(false)
-        sessionRef.current?.stopFilm()
+        // Reescolher o MESMO arquivo nao cancela nada: cancelar mandaria quem
+        // ja esta baixando recomecar do zero sem motivo.
+        const anterior = filmFileRef.current
+        const mesmoArquivo =
+          anterior?.name === file.name && anterior?.size === file.size
+        if (!mesmoArquivo) sessionRef.current?.stopFilm()
         filmFileRef.current = file
 
         const loaded = await loadFileIntoPlayer(video, file)

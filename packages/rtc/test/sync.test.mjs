@@ -13,6 +13,7 @@ import assert from 'node:assert/strict'
 import {
   DEAD_ZONE_SEC,
   FilmReceiver,
+  FilmSender,
   HARD_SEEK_THRESHOLD_SEC,
   MAX_RATE_ADJUSTMENT,
   computePlaybackCorrection,
@@ -126,4 +127,154 @@ test('formatBytes usa a unidade que a pessoa espera ler', () => {
   assert.equal(formatBytes(2048), '2 KB')
   assert.equal(formatBytes(5 * 1024 * 1024), '5.0 MB')
   assert.equal(formatBytes(3 * 1024 * 1024 * 1024), '3.00 GB')
+})
+
+test('transferencia retomada sai byte a byte identica ao original', async () => {
+  /**
+   * O cenario que motivou a retomada: o host reinicia no meio de um filme
+   * grande. Antes, os bytes ja recebidos iam para o lixo e tudo recomecava do
+   * zero. O que este teste prova nao e so que a retomada acontece — e que o
+   * arquivo montado depois dela e EXATAMENTE o original. Retomar na posicao
+   * errada produziria um arquivo do tamanho certo e com o conteudo embaralhado,
+   * que e uma falha muito pior do que recomecar.
+   */
+  const total = 300_000
+  const original = new Uint8Array(total)
+  for (let i = 0; i < total; i++) original[i] = (i * 7) % 251
+
+  const pedaco = (de, ate) => {
+    const s = original.slice(de, ate)
+    return s.buffer.slice(s.byteOffset, s.byteOffset + s.byteLength)
+  }
+
+  const receiver = new FilmReceiver('filme.mp4', total, 'video/mp4')
+
+  // Primeira tentativa: cai no meio de um chunk qualquer.
+  const queda = 137_216
+  const chunk = 16 * 1024
+  for (let o = 0; o < queda; o += chunk) receiver.push(pedaco(o, Math.min(o + chunk, queda)))
+
+  assert.equal(receiver.received, queda)
+  assert.equal(receiver.complete, false)
+
+  // O host volta e pergunta de onde continuar; a resposta e `received`.
+  assert.ok(receiver.matches('filme.mp4', total), 'e o mesmo arquivo')
+  receiver.resumeSession()
+
+  for (let o = receiver.received; o < total; o += chunk) {
+    receiver.push(pedaco(o, Math.min(o + chunk, total)))
+  }
+
+  assert.equal(receiver.received, total)
+  assert.equal(receiver.complete, true)
+
+  const bytes = new Uint8Array(await receiver.finish().arrayBuffer())
+  assert.equal(bytes.length, total)
+  assert.deepEqual(bytes, original, 'o arquivo retomado tem que ser identico')
+})
+
+test('arquivo diferente com o mesmo nome nao e confundido', () => {
+  const receiver = new FilmReceiver('filme.mp4', 1000, 'video/mp4')
+  assert.equal(receiver.matches('filme.mp4', 1000), true)
+  assert.equal(receiver.matches('filme.mp4', 2000), false, 'tamanho diferente = outro arquivo')
+  assert.equal(receiver.matches('outro.mp4', 1000), false)
+})
+
+test('bytes a mais sao descartados em vez de corromper o arquivo', () => {
+  // Se quem envia recomecar de uma posicao anterior a que ja temos, aceitar
+  // tudo produziria um arquivo maior que o original — e que parece valido.
+  const receiver = new FilmReceiver('filme.mp4', 100, 'video/mp4')
+  receiver.push(new ArrayBuffer(80))
+  receiver.push(new ArrayBuffer(50))
+
+  assert.equal(receiver.received, 100, 'nunca passa do tamanho declarado')
+  assert.equal(receiver.complete, true)
+  assert.equal(receiver.finish().size, 100)
+})
+
+test('a velocidade medida ignora o que ja havia antes da retomada', () => {
+  // Retomando em 90%, dividir o total pelo tempo desta sessao daria um numero
+  // fantasioso na tela de quem espera.
+  const receiver = new FilmReceiver('filme.mp4', 1_000_000, 'video/mp4')
+  receiver.push(new ArrayBuffer(900_000))
+  receiver.resumeSession()
+  const progresso = receiver.push(new ArrayBuffer(1000))
+
+  assert.equal(progresso.sent, 901_000, 'o progresso mostra o total acumulado')
+  assert.ok(
+    progresso.bytesPerSecond < 900_000,
+    `a taxa deve refletir so os bytes novos, veio ${progresso.bytesPerSecond}`
+  )
+})
+
+/** Canal de dados de mentira que despeja direto no receptor. */
+function canalFalso(receiver, morrerApos = Infinity) {
+  let enviado = 0
+  return {
+    binaryType: 'arraybuffer',
+    bufferedAmount: 0,
+    bufferedAmountLowThreshold: 0,
+    readyState: 'open',
+    send(buffer) {
+      receiver.push(buffer)
+      enviado += buffer.byteLength
+      // A queda acontece DEPOIS de entregar o chunk, como na vida real: o que
+      // ja passou pelo fio chegou.
+      if (enviado >= morrerApos) this.readyState = 'closed'
+    },
+    addEventListener() {},
+    removeEventListener() {}
+  }
+}
+
+test('envio + queda + retomada entregam o arquivo original', async () => {
+  const total = 250_000
+  const original = new Uint8Array(total)
+  for (let i = 0; i < total; i++) original[i] = (i * 13) % 251
+  const arquivo = new File([original], 'filme.mp4', { type: 'video/mp4' })
+
+  const receiver = new FilmReceiver('filme.mp4', total, 'video/mp4')
+
+  // Primeira tentativa: o canal fecha por volta da metade.
+  const canal1 = canalFalso(receiver, 120_000)
+  await assert.rejects(
+    () => new FilmSender(canal1, arquivo).send(() => {}),
+    /canal do filme fechou/,
+    'o envio precisa falhar de forma explicita, nao em silencio'
+  )
+
+  const parouEm = receiver.received
+  assert.ok(parouEm > 0 && parouEm < total, `parou em ${parouEm}, fora do esperado`)
+
+  // Retomada: quem recebe dita a posicao.
+  receiver.resumeSession()
+  let ultimoProgresso = null
+  await new FilmSender(canalFalso(receiver), arquivo).send((p) => {
+    ultimoProgresso = p
+  }, receiver.received)
+
+  assert.equal(ultimoProgresso.sent, total)
+  assert.equal(receiver.complete, true)
+
+  const bytes = new Uint8Array(await receiver.finish().arrayBuffer())
+  assert.deepEqual(bytes, original, 'retomar na posicao errada embaralharia o conteudo')
+})
+
+test('retomar no fim nao reenvia nada', async () => {
+  const arquivo = new File([new Uint8Array(50_000)], 'filme.mp4', { type: 'video/mp4' })
+  const receiver = new FilmReceiver('filme.mp4', 50_000, 'video/mp4')
+
+  let bytesNoFio = 0
+  const canal = canalFalso(receiver)
+  const enviarOriginal = canal.send.bind(canal)
+  canal.send = (b) => {
+    bytesNoFio += b.byteLength
+    enviarOriginal(b)
+  }
+
+  const progressos = []
+  await new FilmSender(canal, arquivo).send((p) => progressos.push(p), 50_000)
+
+  assert.equal(bytesNoFio, 0, 'nada deve trafegar quando ja esta completo')
+  assert.equal(progressos.at(-1).sent, 50_000, 'mas o painel precisa mostrar 100%')
 })

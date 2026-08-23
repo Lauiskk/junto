@@ -265,8 +265,17 @@ export const controlMessageSchema = z.discriminatedUnion('type', [
     mimeType: z.string().max(120),
     durationSec: z.number().nullable()
   }),
-  /** Viewer aceita e pede o envio. */
-  z.object({ type: z.literal('film-accept') }),
+  /**
+   * Viewer aceita e pede o envio.
+   *
+   * `from` e a posicao de onde continuar, em bytes. Quem recebe e o unico que
+   * sabe quanto ja tem — por isso e ele quem dita o ponto de partida. Ausente
+   * ou 0 significa "manda desde o comeco".
+   */
+  z.object({
+    type: z.literal('film-accept'),
+    from: z.number().int().nonnegative().optional()
+  }),
   /** Progresso do download, para o host ver quem ja pode comecar. */
   z.object({
     type: z.literal('film-progress'),
