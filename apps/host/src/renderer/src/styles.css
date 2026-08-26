@@ -1339,3 +1339,63 @@ select.field__input {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ------------------------------------------------ silenciar aplicativos */
+
+/**
+ * Lista de apps que podem ser silenciados.
+ *
+ * Caixas de marcar e nao um `select` de escolha unica: o Windows so aceita um
+ * alvo de exclusao por captura, mas montando o audio app a app da para deixar
+ * quantos quiser de fora — e a interface precisava parar de prometer so um.
+ */
+.mute-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  max-height: 132px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.mute-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  cursor: pointer;
+  font-size: 12.5px;
+  user-select: none;
+  min-width: 0;
+  transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+
+.mute-item:hover {
+  background: var(--surface-3);
+  border-color: var(--line);
+}
+
+/* Marcado = silenciado. Vermelho porque o efeito e tirar som, nao adicionar. */
+.mute-item:has(input:checked) {
+  border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+  background: var(--bad-wash);
+  color: var(--bad);
+}
+
+.mute-item input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: none;
+  cursor: pointer;
+  accent-color: var(--bad);
+}
+
+.mute-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

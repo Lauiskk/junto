@@ -6,9 +6,16 @@ interface Props {
   open: boolean
   withSystemAudio: boolean
   onToggleAudio: (value: boolean) => void
-  /** Id da janela cujo app deve ficar MUDO ao compartilhar a tela inteira. */
-  silenceSourceId: string | null
-  onSilenceChange: (sourceId: string | null) => void
+  /**
+   * Executaveis que devem ficar MUDOS ao compartilhar a tela inteira,
+   * ex.: ["discord.exe"].
+   *
+   * Por nome de executavel e nao por janela: o Discord roda com mais de um
+   * processo e o Chromium renderiza audio num filho. Silenciar "Discord" tem
+   * que pegar todos eles.
+   */
+  mutedApps: string[]
+  onMutedChange: (executables: string[]) => void
   onPick: (source: CaptureSource) => void
   onClose: () => void
 }
@@ -24,14 +31,15 @@ export function SourcePicker({
   open,
   withSystemAudio,
   onToggleAudio,
-  silenceSourceId,
-  onSilenceChange,
+  mutedApps,
+  onMutedChange,
   onPick,
   onClose
 }: Props): ReactElement | null {
   const [sources, setSources] = useState<CaptureSource[]>([])
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<'all' | 'screen' | 'window'>('all')
+  const [apps, setApps] = useState<{ pid: number; executable: string }[]>([])
 
   useEffect(() => {
     if (!open) return
@@ -41,6 +49,37 @@ export function SourcePicker({
       .then(setSources)
       .finally(() => setLoading(false))
   }, [open])
+
+  /**
+   * Aplicativos com som aberto AGORA.
+   *
+   * A lista vem das sessoes de audio, e nao das janelas, porque stream e a unica
+   * coisa que ha para deixar de fora — um app aberto e calado nao tem o que
+   * silenciar. Processos repetidos do mesmo executavel viram uma linha so.
+   */
+  useEffect(() => {
+    if (!open || !withSystemAudio) return
+    let vivo = true
+    const carregar = (): void => {
+      void window.junto.audioSessions().then((sessoes) => {
+        if (!vivo) return
+        const porExecutavel = new Map<string, { pid: number; executable: string }>()
+        for (const s of sessoes) {
+          if (!s.executable) continue
+          if (!porExecutavel.has(s.executable.toLowerCase())) {
+            porExecutavel.set(s.executable.toLowerCase(), s)
+          }
+        }
+        setApps([...porExecutavel.values()])
+      })
+    }
+    carregar()
+    const timer = setInterval(carregar, 3000)
+    return () => {
+      vivo = false
+      clearInterval(timer)
+    }
+  }, [open, withSystemAudio])
 
   useEffect(() => {
     if (!open) return
@@ -90,30 +129,49 @@ export function SourcePicker({
         </label>
 
         {withSystemAudio && (
-          <label className="field field--inline">
+          <div className="field">
             <span>
-              Ao compartilhar a <strong>tela inteira</strong>, silenciar o audio de:
+              Ao compartilhar a <strong>tela inteira</strong>, silenciar:
             </span>
-            <select
-              className="field__input"
-              value={silenceSourceId ?? ''}
-              onChange={(e) => onSilenceChange(e.target.value || null)}
-            >
-              <option value="">nenhum app (som do sistema inteiro)</option>
-              {sources
-                .filter((s) => s.kind === 'window')
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-            </select>
+
+            {apps.length === 0 ? (
+              <em className="muted">Nenhum aplicativo tocando som no momento.</em>
+            ) : (
+              <div className="mute-list">
+                {apps.map((app) => {
+                  const nome = app.executable
+                  const marcado = mutedApps.some(
+                    (m) => m.toLowerCase() === nome.toLowerCase()
+                  )
+                  return (
+                    <label key={nome} className="mute-item">
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        onChange={(e) =>
+                          onMutedChange(
+                            e.target.checked
+                              ? [...mutedApps, nome]
+                              : mutedApps.filter(
+                                  (m) => m.toLowerCase() !== nome.toLowerCase()
+                                )
+                          )
+                        }
+                      />
+                      <span>{nome.replace(/\.exe$/i, '')}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
             <em>
-              Escolhendo o Discord aqui, a conversa de voz nao vai junto com o
-              filme. Compartilhando apenas uma janela isto e desnecessario — ali o
-              som ja sai isolado.
+              Da para marcar quantos quiser. O proprio Junto ja fica de fora
+              sempre — sem isso, a voz de quem esta assistindo voltaria como eco.
+              Compartilhando apenas uma janela nada disso e necessario: ali o som
+              ja sai isolado.
             </em>
-          </label>
+          </div>
         )}
 
         {loading && <p className="modal__loading">Procurando telas e janelas…</p>}

@@ -67,6 +67,8 @@ Nada aqui é estimativa; são leituras de sessões reais, com o método descrito
 | Áudio ponta a ponta | tom de 440 Hz reproduzido chegou a **445 Hz**, estéreo, 48 kHz |
 | Encoder de vídeo | `MediaFoundationVideoEncodeAccelerator (NVIDIA H.264 Encoder MFT)` — GPU, não CPU |
 | Isolamento de áudio por janela | app que toca: RMS **0,248** · app silencioso: RMS **0,00001** |
+| Silenciar vários apps | tom em **0,210** → 0,010 com 1 mudo → **0,0016** com 2 |
+| Não ecoar a própria sala | tom tocando no app: **0,209** · o que sai: **0,0017** |
 | Modo Cinema | 12 MB transferidos **byte a byte idênticos**, buffer travado em 1,06 MB |
 | Sincronia do Modo Cinema | desvio abaixo de **0,1 s** na maior parte do tempo |
 | Aperto de banda (150 kbps) | áudio cai para **48 kbps** e o vídeo sobrevive em **360p** — antes, 88 kbps de som e 3 de imagem |
@@ -153,6 +155,17 @@ Estão comentadas no código, mas em resumo:
   voz — o oposto do que o som do sistema precisa.
 - **Chat em estrela** — espectadores não se conectam entre si; o host carimba o
   autor e repassa. Um viewer não consegue se passar por outro.
+- **Silenciar quantos apps quiser, e nunca a si mesmo**
+  ([`addon.cc`](packages/native-audio/src/addon.cc)) — os parâmetros de ativação
+  do Windows carregam **um** `TargetProcessId`, então "tudo menos o Junto *e* o
+  Discord" não existe como pedido. O som passa a ser montado pelo outro lado:
+  uma captura por aplicativo não silenciado, somadas num mixer dentro do addon.
+  O próprio app fica de fora **sempre** — ele toca a voz de cada espectador, e
+  capturá-la de volta faria todos se ouvirem com atraso. E não basta excluir o
+  processo principal: o Chromium renderiza som num processo **filho** de serviço,
+  então o que sai é a árvore inteira. Casamento por nome de executável, porque o
+  Discord roda com dois processos ao mesmo tempo. Ideia e diagnóstico do
+  [golive](https://github.com/Nem-Tudo/group-sharescreen).
 - **Áudio isolado por processo** ([`packages/native-audio`](packages/native-audio))
   — compartilhando uma janela, sai **só** o som daquele aplicativo. O truque que
   faz a experiência funcionar: o id de fonte do Electron é `window:<HWND>:0`,
@@ -402,9 +415,6 @@ inclusive forçando um caminho `relay`, que é a única forma de saber se o TURN
   progressivo exigiria MSE com fMP4 (a maioria dos MP4 não é fragmentado) ou
   remux em WASM — o caminho atual funciona com qualquer formato que o navegador
   toque, ao custo da espera.
-- **Silenciar mais de um app por vez.** Em tela cheia dá para excluir o áudio de
-  **um** aplicativo (o Discord, tipicamente) — a API do Windows recebe um
-  processo por captura. Silenciar vários exigiria misturar várias capturas.
 - **O TURN da Cloudflare está implementado mas ainda não foi exercitado contra
   uma chave real** — o caminho de código roda e cai para STUN sem quebrar quando
   as variáveis não existem, mas a primeira sessão de verdade por relay ainda está

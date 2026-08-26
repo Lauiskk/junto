@@ -71,9 +71,16 @@ export function App(): ReactElement {
   const [cinema, setCinema] = useState(false)
   const [audioCortado, setAudioCortado] = useState(false)
   const [audioMode, setAudioMode] = useState<
-    'processo' | 'excluindo' | 'sistema' | 'nenhum'
+    'processo' | 'montado' | 'sistema' | 'nenhum'
   >('nenhum')
-  const [silenceSourceId, setSilenceSourceId] = useState<string | null>(null)
+  /**
+   * Executaveis silenciados, ex.: ["discord.exe"].
+   *
+   * Por NOME e nao por PID: o Discord roda com mais de um processo, e o Chromium
+   * renderiza audio num processo filho. Silenciar "Discord" precisa pegar todos —
+   * medido na propria maquina, `Discord.exe` aparece em dois PIDs ao mesmo tempo.
+   */
+  const [mutedApps, setMutedApps] = useState<string[]>([])
   const filmFileRef = useRef<File | null>(null)
 
   /**
@@ -204,7 +211,7 @@ export function App(): ReactElement {
           picked,
           withSystemAudio,
           getPreset(presetId),
-          silenceSourceId
+          mutedApps
         )
 
         streamRef.current = result.stream
@@ -232,9 +239,11 @@ export function App(): ReactElement {
           setNotice(
             'Audio isolado: esta saindo APENAS o som desta janela. Chamadas e notificacoes de outros apps nao vao junto.'
           )
-        } else if (result.audioMode === 'excluindo') {
+        } else if (result.audioMode === 'montado') {
           setNotice(
-            'Som do sistema, MENOS o app que voce escolheu silenciar. O resto (notificacoes, outros programas) continua indo junto.'
+            mutedApps.length > 0
+              ? `Som do computador com ${mutedApps.length} app(s) silenciado(s). O Junto nunca entra: a voz de quem assiste nao volta como eco.`
+              : 'Som do computador, sem o proprio Junto — a voz de quem assiste nao volta como eco. Notificacoes e outros programas vao junto.'
           )
         } else if (result.audioNote) {
           setNotice(result.audioNote)
@@ -258,7 +267,7 @@ export function App(): ReactElement {
         })
       }
     },
-    [presetId, withSystemAudio, silenceSourceId, stopStreaming]
+    [presetId, withSystemAudio, mutedApps, stopStreaming]
   )
 
   // -- fonte: arquivo local --------------------------------------------------
@@ -485,16 +494,21 @@ export function App(): ReactElement {
               <>
                 <strong>Audio cortado.</strong> Ninguem esta ouvindo seu computador.
               </>
-            ) : audioMode === 'excluindo' ? (
+            ) : audioMode === 'montado' ? (
               <>
-                <strong>Um app esta silenciado</strong>, mas o resto do som do
-                computador continua saindo — notificacoes e outros programas vao
-                junto.
+                <strong>
+                  {mutedApps.length > 0
+                    ? `${mutedApps.length} app(s) silenciado(s)`
+                    : 'Nenhum app silenciado'}
+                </strong>
+                , mas o resto do som do computador continua saindo — notificacoes e
+                outros programas vao junto.
               </>
             ) : (
               <>
                 <strong>Estao ouvindo o som do sistema inteiro</strong> — inclusive
-                chamadas, notificacoes e outros apps, nao so a janela compartilhada.
+                chamadas, notificacoes, outros apps e ate a voz de quem esta
+                assistindo, que volta como eco.
               </>
             )}
           </span>
@@ -778,8 +792,13 @@ export function App(): ReactElement {
         open={pickerOpen}
         withSystemAudio={withSystemAudio}
         onToggleAudio={setWithSystemAudio}
-        silenceSourceId={silenceSourceId}
-        onSilenceChange={setSilenceSourceId}
+        mutedApps={mutedApps}
+        onMutedChange={(apps) => {
+          setMutedApps(apps)
+          // Sem interromper o audio: quem esta assistindo nao ouve um buraco
+          // porque voce marcou uma caixinha.
+          void window.junto.setMutedApps(apps)
+        }}
         onPick={(picked) => void pickSource(picked)}
         onClose={() => setPickerOpen(false)}
       />

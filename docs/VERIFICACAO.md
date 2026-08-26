@@ -28,6 +28,9 @@ Registrado para não ser refeito à toa:
 | Queda do túnel (WebSocket cortado no meio da transmissão) | vídeo avançou **19,86 s em 19,8 s** de relógio; **zero** frames em branco; sala inalterada |
 | Mesma medição sem cortar nada (controle) | pior congelamento **1,2 s** — a linha de base da tela parada; com o corte, 1,8 s |
 | Retomada do Modo Cinema | host morto a 85% de um arquivo de 271 MB; retomou **em 85%** e o SHA-256 do arquivo montado bateu com o original |
+| Silenciar vários apps | tom em 0,210 → **0,010** com 1 app mudo → **0,0016** com 2 |
+| Eco da própria sala | tom tocando no app medido em **0,209**; o que sai para os espectadores: **0,0017** |
+| Cadência do mixer | 4,99 s de áudio para 5,02 s de relógio (−0,6%) |
 
 O teste de áudio vale a pena repetir do jeito que foi feito: tocar um tom puro
 numa aba do navegador e medir a frequência dominante do outro lado prova o
@@ -229,6 +232,49 @@ Os dois números precisam bater. **Aviso sobre falso negativo:** num Chrome
 *headless* o vídeo montado pode aparecer como `0x0` mesmo estando perfeito — é
 falta de codec proprietário, não corrupção. Foi o que aconteceu na medição
 registrada acima, e só o hash desfez a dúvida.
+
+## 2b-octies. Silenciar vários apps, e não ecoar a si mesmo
+
+Duas coisas que a API do Windows não deixa pedir de frente: os parâmetros de
+ativação carregam **um** `TargetProcessId`, então "tudo menos o Junto **e** o
+Discord" não existe como pedido. O som passa a ser montado — uma captura por
+aplicativo que **não** foi silenciado, somadas.
+
+```bash
+node packages/native-audio/teste-mixagem.mjs
+```
+
+**Como medir sem se enganar:** a medição só vale com som tocando. Abra uma aba
+com um tom puro (WebAudio, 440 Hz) e meça a energia do que sai:
+
+| Silenciado | RMS esperado |
+|---|---|
+| nada | alto (~0,2 com o tom) |
+| o app do tom | ~0,01 |
+| o app do tom + outro | ~0,001 |
+
+Se silenciar o app do tom **não** derrubar o número, o casamento por nome de
+executável quebrou — e ele é essencial: o Discord roda com **dois processos**, e
+marcar "Discord" precisa pegar os dois.
+
+**O teste do eco**, que é o mais fácil de esquecer: faça o **próprio app** tocar
+um tom (no console do renderer: um `AudioContext` com oscilador) e meça o que
+sai. Os dois números precisam ser muito diferentes — o tom alto medido dentro do
+processo, e silêncio na saída. Se forem iguais, o app está capturando a si mesmo,
+e quem assiste vai se ouvir com atraso.
+
+**A armadilha específica:** o processo que segura a sessão de áudio **não é** o
+processo principal do Electron. O Chromium renderiza som num processo filho de
+serviço — medido aqui: o app roda com 4 processos, e o dono da sessão era um
+quinto que só aparece quando há som. Excluir só `currentProcessId()` não resolve;
+é preciso a árvore inteira.
+
+**A cadência também merece um olhar.** O mixer emite um bloco a cada 10 ms, e o
+lado que recebe monta o timestamp da trilha pela contagem de amostras — então
+emitir rápido demais faz o áudio adiantar progressivamente em relação ao vídeo.
+Compare segundos de áudio produzidos com segundos de relógio: têm que bater
+dentro de ~1%. Já deu 30% de excesso, porque a resolução padrão de timer do
+Windows (~15,6 ms) fazia o laço disparar em rajada para recuperar atraso.
 
 ## 2c. Voz e chat
 

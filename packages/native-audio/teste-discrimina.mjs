@@ -20,7 +20,7 @@ function rms(buffers) {
 async function capturar(pid, include, ms = 2500) {
   const bufs = []
   try {
-    nativo.startCapture(pid, include, (c) => bufs.push(c))
+    nativo.startCapture(include ? { includePids: [pid] } : { excludePid: pid }, (c) => bufs.push(c))
   } catch (e) {
     return { erro: String(e.message ?? e) }
   }

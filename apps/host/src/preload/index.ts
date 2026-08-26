@@ -24,18 +24,38 @@ const api = {
 
   audioStatus: (): Promise<ProcessAudioStatus> => ipcRenderer.invoke('audio:status'),
 
-  /**
-   * include: captura SO este processo (a janela compartilhada).
-   * exclude: captura tudo MENOS ele — para silenciar o Discord em tela cheia.
-   */
-  startProcessAudio: (
-    sourceId: string,
-    mode: 'include' | 'exclude'
-  ): Promise<ProcessAudioStatus & { started: boolean }> =>
-    ipcRenderer.invoke('audio:start-process', sourceId, mode),
+  /** Diagnostico: nossa arvore de processos, que nunca deve ser capturada. */
+  ownProcessTree: (): Promise<number[]> => ipcRenderer.invoke('audio:own-tree'),
 
-  probeAudio: (pid: number, include: boolean): Promise<{ packets: number; rms: number; error: string | null }> =>
-    ipcRenderer.invoke('audio:probe', pid, include),
+  /** Aplicativos com som aberto agora, para o seletor de silenciamento. */
+  audioSessions: (): Promise<{ pid: number; executable: string }[]> =>
+    ipcRenderer.invoke('audio:sessions'),
+
+  /** Captura SO o processo dono desta janela — o caso de compartilhar 1 janela. */
+  startProcessAudio: (
+    sourceId: string
+  ): Promise<ProcessAudioStatus & { started: boolean }> =>
+    ipcRenderer.invoke('audio:start-process', sourceId),
+
+  /**
+   * Som do computador, menos o proprio app (sempre) e menos os executaveis
+   * silenciados. Montado somando uma captura por aplicativo, porque o Windows
+   * so aceita um alvo de exclusao por vez.
+   */
+  startSystemAudio: (
+    muted: string[]
+  ): Promise<ProcessAudioStatus & { started: boolean }> =>
+    ipcRenderer.invoke('audio:start-system', muted),
+
+  /** Troca os silenciados sem interromper o audio. */
+  setMutedApps: (muted: string[]): Promise<ProcessAudioStatus> =>
+    ipcRenderer.invoke('audio:set-muted', muted),
+
+  probeAudio: (options: {
+    excludePid?: number
+    includePids?: number[]
+  }): Promise<{ packets: number; rms: number; error: string | null }> =>
+    ipcRenderer.invoke('audio:probe', options),
 
   stopProcessAudio: (): Promise<ProcessAudioStatus> =>
     ipcRenderer.invoke('audio:stop-process'),

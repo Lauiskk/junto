@@ -33,19 +33,78 @@ module.exports = {
     }
   },
 
+  /** PID deste proprio processo — o que NUNCA deve entrar na captura. */
+  currentProcessId() {
+    if (!native) return null
+    try {
+      return native.currentProcessId()
+    } catch {
+      return null
+    }
+  },
+
   /**
-   * Comeca a capturar. `include: true` pega SO o processo (e filhos);
-   * `include: false` pega tudo MENOS ele — util para silenciar o Discord
-   * quando se compartilha a tela inteira.
+   * Este processo e TODOS os filhos.
+   *
+   * O Chromium renderiza audio num processo filho de servico, entao excluir so o
+   * principal deixaria o proprio som do app passar — e voltar como eco para quem
+   * esta assistindo.
    */
-  startCapture(pid, include, onPcm) {
+  ownProcessTree() {
+    if (!native) return []
+    try {
+      return native.ownProcessTree()
+    } catch {
+      return []
+    }
+  },
+
+  /** Processos com stream de audio aberta agora, com o nome do executavel. */
+  listAudioSessions() {
+    if (!native) return []
+    try {
+      return native.listAudioSessions()
+    } catch {
+      return []
+    }
+  },
+
+  /**
+   * Comeca a capturar.
+   *
+   * `{ excludePid }` pega tudo MENOS aquele processo (e filhos) — uma captura
+   * so, e o caminho do caso comum. `{ includePids }` pega exatamente aqueles
+   * processos e soma; e o unico jeito de deixar MAIS DE UM de fora, porque os
+   * parametros de ativacao do Windows so aceitam um alvo por captura.
+   */
+  startCapture(options, onPcm) {
     if (!native) throw new Error('modulo nativo indisponivel: ' + loadError)
-    return native.startCapture(pid, Boolean(include), onPcm)
+    return native.startCapture(options ?? {}, onPcm)
+  },
+
+  /** Troca o conjunto de processos capturados sem interromper o audio. */
+  setIncludePids(pids) {
+    if (!native) return false
+    try {
+      return native.setIncludePids(pids)
+    } catch {
+      return false
+    }
   },
 
   stopCapture() {
     if (!native) return false
     return native.stopCapture()
+  },
+
+  /** Alguma fonte chegou a ativar? Se nao, quem chama precisa do plano B. */
+  capturando() {
+    if (!native) return false
+    try {
+      return native.capturando()
+    } catch {
+      return false
+    }
   },
 
   ultimoErro() {

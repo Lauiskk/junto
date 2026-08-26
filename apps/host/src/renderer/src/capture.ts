@@ -10,9 +10,12 @@ import { createProcessAudioTrack, type ProcessAudioTrack } from './processAudioT
  * 1. **Por processo** (preferida): so o som da janela escolhida. Resolve o
  *    vazamento que apareceu em uso real — uma chamada de Discord foi ouvida por
  *    quem assistia uma janela de filme.
- * 2. **Do sistema** (queda): pega tudo o que toca no computador. Continua
- *    existindo porque em tela cheia nao ha "processo dono", e porque o modulo
- *    nativo pode faltar. Nesse caso a interface avisa.
+ * 2. **Montada** (tela inteira): o som do computador somado aplicativo por
+ *    aplicativo, deixando de fora o proprio app e os que voce silenciou. E
+ *    montada em vez de excluida porque os parametros do Windows so aceitam UM
+ *    alvo de exclusao — nao da para pedir "tudo menos o Junto e o Discord".
+ * 3. **Do sistema** (queda): pega tudo, inclusive o proprio app. So acontece
+ *    quando o modulo nativo falta; a interface avisa.
  */
 
 export interface CaptureResult {
@@ -21,9 +24,14 @@ export interface CaptureResult {
   usedFallback: boolean
   /**
    * De onde veio o som — o que decide o aviso na interface.
-   * `processo` = so a janela; `excluindo` = tudo menos um app; `sistema` = tudo.
+   *
+   * `processo` = so a janela compartilhada;
+   * `montado`  = som do computador somado app a app, sem o proprio Junto e sem
+   *              os silenciados;
+   * `sistema`  = loopback comum, TUDO, inclusive o proprio app (so quando o
+   *              modulo nativo falta).
    */
-  audioMode: 'processo' | 'excluindo' | 'sistema' | 'nenhum'
+  audioMode: 'processo' | 'montado' | 'sistema' | 'nenhum'
   audioNote: string | null
 }
 
@@ -40,26 +48,22 @@ let processAudio: ProcessAudioTrack | null = null
 
 async function tryProcessAudio(
   source: CaptureSource,
-  silenceSourceId: string | null
+  mutedApps: string[]
 ): Promise<{ track: MediaStreamTrack | null; note: string | null }> {
   /**
    * Dois caminhos, conforme o que esta sendo compartilhado:
    *
-   * - **Janela**: modo INCLUDE no processo dono — sai so o som dela.
-   * - **Tela inteira**: nao existe "processo dono", entao o melhor possivel e o
-   *   inverso — capturar tudo MENOS o app escolhido (tipicamente o Discord, para
-   *   a conversa de voz nao ir junto com o filme).
+   * - **Janela**: so o som do processo dono dela.
+   * - **Tela inteira**: nao existe "processo dono", entao o som do computador e
+   *   MONTADO — uma captura por aplicativo, menos o proprio app e menos os
+   *   silenciados. O proprio app sai sempre, e nao por opcao: ele toca a voz de
+   *   cada espectador, e captura-la de volta faria todo mundo se ouvir com
+   *   atraso.
    */
-  const alvo =
+  const status =
     source.kind === 'window'
-      ? { id: source.id, mode: 'include' as const }
-      : silenceSourceId
-        ? { id: silenceSourceId, mode: 'exclude' as const }
-        : null
-
-  if (!alvo) return { track: null, note: null }
-
-  const status = await window.junto.startProcessAudio(alvo.id, alvo.mode)
+      ? await window.junto.startProcessAudio(source.id)
+      : await window.junto.startSystemAudio(mutedApps)
   if (!status.started) {
     return {
       track: null,
@@ -83,12 +87,12 @@ export async function startCapture(
   source: CaptureSource,
   withSystemAudio: boolean,
   preset: QualityPreset,
-  silenceSourceId: string | null = null
+  mutedApps: string[] = []
 ): Promise<CaptureResult> {
   stopProcessAudioTrack()
 
   const isolated = withSystemAudio
-    ? await tryProcessAudio(source, silenceSourceId)
+    ? await tryProcessAudio(source, mutedApps)
     : { track: null, note: null }
 
   // Se o audio ja vem isolado, o getDisplayMedia pede video puro — pedir os dois
@@ -146,7 +150,7 @@ export async function startCapture(
       : 'nenhum'
     : source.kind === 'window'
       ? 'processo'
-      : 'excluindo'
+      : 'montado'
 
   return { stream, audioSettings, usedFallback, audioMode, audioNote: isolated.note }
 }

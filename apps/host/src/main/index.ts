@@ -8,10 +8,14 @@ import {
   type CaptureSelection
 } from './capture.js'
 import {
+  audioSessions,
+  ownProcessTree,
   pidForSource,
   probeProcessAudio,
   processAudioStatus,
+  setMutedExecutables,
   startProcessAudio,
+  startSystemAudio,
   stopProcessAudio
 } from './process-audio.js'
 
@@ -164,25 +168,48 @@ ipcMain.handle('capture:list-sources', () => listSources())
 
 ipcMain.handle('audio:status', () => processAudioStatus())
 
+/** Aplicativos com som aberto agora — o que o seletor lista para silenciar. */
+ipcMain.handle('audio:sessions', () => audioSessions())
+
+/** Diagnostico: nossa arvore de processos, a que nunca pode ser capturada. */
+ipcMain.handle('audio:own-tree', () => ownProcessTree())
+
 /**
- * Liga a captura de audio do processo dono da janela escolhida.
+ * Liga a captura de audio do processo dono da JANELA escolhida.
  *
  * Retorna o status para o renderer decidir: com audio por processo, o som que
  * sai e so o daquela janela; sem ele, cai no audio do sistema e a interface
  * precisa avisar que Discord e notificacoes vao junto.
  */
-ipcMain.handle(
-  'audio:start-process',
-  (_event, sourceId: string, mode: 'include' | 'exclude') => {
-    const pid = pidForSource(sourceId)
-    if (pid === null || !mainWindow) return { ...processAudioStatus(), started: false }
-    const started = startProcessAudio(mainWindow, pid, mode !== 'exclude')
-    return { ...processAudioStatus(), started }
-  }
-)
+ipcMain.handle('audio:start-process', (_event, sourceId: string) => {
+  const pid = pidForSource(sourceId)
+  if (pid === null || !mainWindow) return { ...processAudioStatus(), started: false }
+  const started = startProcessAudio(mainWindow, pid)
+  return { ...processAudioStatus(), started }
+})
 
-ipcMain.handle('audio:probe', (_event, pid: number, include: boolean) =>
-  probeProcessAudio(pid, include)
+/**
+ * Som do computador inteiro, menos o proprio app e menos os silenciados.
+ *
+ * O proprio app sai SEMPRE, e nao por opcao: ele toca a voz de cada espectador
+ * pelos alto-falantes, e captura-la de volta faria todo mundo se ouvir com
+ * atraso.
+ */
+ipcMain.handle('audio:start-system', (_event, muted: string[]) => {
+  if (!mainWindow) return { ...processAudioStatus(), started: false }
+  const started = startSystemAudio(mainWindow, muted ?? [])
+  return { ...processAudioStatus(), started }
+})
+
+ipcMain.handle('audio:set-muted', (_event, muted: string[]) => {
+  setMutedExecutables(muted ?? [])
+  return processAudioStatus()
+})
+
+ipcMain.handle(
+  'audio:probe',
+  (_event, options: { excludePid?: number; includePids?: number[] }) =>
+    probeProcessAudio(options)
 )
 
 ipcMain.handle('audio:stop-process', () => {

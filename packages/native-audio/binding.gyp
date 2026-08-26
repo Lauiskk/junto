@@ -7,7 +7,7 @@
       "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS", "UNICODE", "_UNICODE"],
       "conditions": [
         ["OS=='win'", {
-          "libraries": ["-lmmdevapi.lib", "-lole32.lib", "-luser32.lib"],
+          "libraries": ["-lmmdevapi.lib", "-lole32.lib", "-luser32.lib", "-lwinmm.lib"],
           "msvs_settings": {
             "VCCLCompilerTool": {
               "ExceptionHandling": 1,
