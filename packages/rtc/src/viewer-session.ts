@@ -122,6 +122,11 @@ export class ViewerSession {
   private clockTimer: ReturnType<typeof setInterval> | null = null
   private clockPingId = 0
   private clockSamples: number[] = []
+  /**
+   * Elemento onde o video esta sendo desenhado, para medir o tamanho real.
+   * Quem monta a interface informa; sem isso o host so pode presumir.
+   */
+  private videoElement: HTMLVideoElement | null = null
   private micTrack: MediaStreamTrack | null = null
   private voiceSender: RTCRtpSender | null = null
   private filmReceiver: FilmReceiver | null = null
@@ -245,6 +250,35 @@ export class ViewerSession {
     this.teardownPeer()
     this.releaseFilmUrl()
     this.signaling.close()
+  }
+
+  /**
+   * Diz qual elemento esta exibindo a transmissao.
+   *
+   * A partir daqui o host passa a saber o tamanho em que a imagem realmente
+   * aparece — e para de gastar upload e CPU desenhando pixels que esta tela
+   * nao mostra.
+   */
+  attachVideoElement(element: HTMLVideoElement | null): void {
+    this.videoElement = element
+  }
+
+  /** Tamanho renderizado em pixels de dispositivo, ou null se ainda nao ha layout. */
+  private renderedSize(): { width: number; height: number } | null {
+    const el = this.videoElement
+    if (!el) return null
+
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+    const width = Math.round(el.clientWidth * dpr)
+    const height = Math.round(el.clientHeight * dpr)
+
+    /**
+     * Elemento sem layout (aba oculta, display:none, ainda nao montado) nao
+     * informa nada. Reportar zero prenderia a transmissao na pior qualidade —
+     * e ela ficaria presa la depois que a aba voltasse.
+     */
+    if (width <= 0 || height <= 0) return null
+    return { width, height }
   }
 
   sendChat(text: string): void {
@@ -695,6 +729,7 @@ export class ViewerSession {
     this.reportTimer = setInterval(() => {
       const stats = this.state.stats
       if (!stats) return
+      const rendered = this.renderedSize()
       this.sendControl({
         type: 'viewer-stats',
         fps: Math.round(stats.video.fps),
@@ -703,7 +738,10 @@ export class ViewerSession {
         kbps: stats.video.kbps + stats.audio.kbps,
         packetsLostPct: stats.network.packetsLostPct,
         jitterMs: Math.round(stats.network.jitterMs),
-        freezeCount: stats.video.freezeCount
+        freezeCount: stats.video.freezeCount,
+        ...(rendered
+          ? { renderedWidth: rendered.width, renderedHeight: rendered.height }
+          : {})
       })
     }, REPORT_INTERVAL_MS)
 

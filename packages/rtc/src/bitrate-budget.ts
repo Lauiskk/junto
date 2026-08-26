@@ -94,6 +94,20 @@ export const MIN_VIDEO_KBPS = 60
 const MIN_TARGET_HEIGHT = 144
 
 /**
+ * Piso do corte por tamanho de tela, e ele e caro de proposito.
+ *
+ * A regra "mande so o que a tela usa", ao pe da letra, mandaria 240p para quem
+ * assiste numa janelinha. O tile so precisa disso — mas uma TELA COMPARTILHADA
+ * abaixo de ~540p deixa de ser legivel, e transmissao ilegivel nao e
+ * transmissao barata, e transmissao desperdicada. Entao o tamanho da janela
+ * corta ate aqui e para.
+ *
+ * Falta de banda continua podendo descer mais: sao coisas diferentes. Uma e
+ * "nao precisa"; a outra e "nao cabe".
+ */
+export const MIN_RENDERED_CAP_HEIGHT = 540
+
+/**
  * Escolhe uma escala cujo resultado tenha LARGURA E ALTURA PARES.
  *
  * O encoder H.264 por hardware recusa frames de dimensao impar. Quando isso
@@ -174,6 +188,11 @@ export interface QualityInput {
   sourceHeight: number
   /** Teto de altura do preset escolhido pelo usuario. */
   presetMaxHeight: number
+  /**
+   * Altura em que quem assiste REALMENTE desenha o video, em pixels de
+   * dispositivo. 0 quando ele ainda nao informou.
+   */
+  renderedHeight?: number
   /** Teto de bitrate de VIDEO do preset. */
   presetMaxKbps: number
   /** Teto de bitrate de audio do preset. */
@@ -214,6 +233,7 @@ export function decideQuality(input: QualityInput): QualityDecision {
     presetMaxHeight,
     presetMaxKbps,
     presetAudioKbps,
+    renderedHeight = 0,
     floorKbps = 0,
     capKbps = 0
   } = input
@@ -228,11 +248,30 @@ export function decideQuality(input: QualityInput): QualityDecision {
    * 3. Caso contrario, nao ha evidencia de gargalo: fica no preset.
    */
   const limitadoPelaBanda = limitation === 'bandwidth'
+  const saindoAgora = sendingKbps + sendingAudioKbps
+
+  /**
+   * A estimativa do ICE e um LIMITE INFERIOR com aquecimento: ela so aprende
+   * que o link aguenta mais quando o link de fato carrega mais. Isso fecha um
+   * laco desagradavel — o rebaixamento inicial mantem a estimativa baixa, e a
+   * estimativa baixa mantem o rebaixamento. A transmissao nunca sobe de novo,
+   * sem nada na rede ter piorado.
+   *
+   * Se 2 Mbps estao comprovadamente saindo, o link carrega pelo menos 2 Mbps —
+   * isso e evidencia, nao otimismo. Entao vale o maior dos dois.
+   *
+   * A excecao importa: quando o proprio encoder diz estar limitado pela banda,
+   * o que esta saindo pode ser justamente o excesso que causa perda. Ai a
+   * estimativa, mais baixa, e quem tem razao. (Ideia do `golive`; a ressalva do
+   * `limitation` e nossa, e vem do bug da tela parada.)
+   */
   const medidaBruta =
     availableKbps > 0
-      ? availableKbps
+      ? limitadoPelaBanda
+        ? availableKbps
+        : Math.max(availableKbps, saindoAgora)
       : limitadoPelaBanda
-        ? sendingKbps + sendingAudioKbps
+        ? saindoAgora
         : 0
 
   // O piso autorizado pelo usuario so vale onde ja existe alguma medida para
@@ -262,7 +301,31 @@ export function decideQuality(input: QualityInput): QualityDecision {
     : presetMaxKbps
 
   const tier = tierForBitrate(videoBudget)
-  const targetHeight = Math.min(tier.height, presetMaxHeight, sourceHeight || tier.height)
+
+  /**
+   * Teto pelo tamanho real de exibicao.
+   *
+   * Mandar 1080p para um elemento de 600 px de largura joga fora a maior parte
+   * dos pixels codificados — no upload E na CPU de quem transmite. Quem assiste
+   * numa janela pequena, ou num celular, nao ganha nada com isso; so o host
+   * paga. Esta e a otimizacao de maior impacto que existe aqui, e a informacao
+   * necessaria (o tamanho renderizado) so quem assiste tem.
+   *
+   * A ideia veio do `golive` (github.com/Nem-Tudo/group-sharescreen), que mediu
+   * ~3,7x menos upload e ~4,7x menos encode numa sala grande. O encode cai mais
+   * que a banda porque o custo do encoder acompanha pixels por segundo.
+   */
+  const tetoPorTela =
+    renderedHeight > 0
+      ? Math.max(MIN_RENDERED_CAP_HEIGHT, renderedHeight)
+      : Number.POSITIVE_INFINITY
+
+  const targetHeight = Math.min(
+    tier.height,
+    presetMaxHeight,
+    tetoPorTela,
+    sourceHeight || tier.height
+  )
 
   // scaleResolutionDownBy e razao, nao altura: 1 = tamanho original.
   const scale = evenFriendlyScale(sourceWidth, sourceHeight, targetHeight)

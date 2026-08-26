@@ -117,6 +117,19 @@ export function App(): ReactElement {
   const film = state?.film ?? null
   const cinemaReady = Boolean(film?.ready && film.url)
 
+  /**
+   * Informa ao host QUAL elemento exibe a transmissao.
+   *
+   * A partir disso ele passa a saber o tamanho real em que a imagem aparece
+   * aqui, e para de gastar upload e CPU desenhando pixels que esta tela nao
+   * mostra. Quem assiste numa janela pequena ou num celular deixa de custar o
+   * mesmo que quem assiste em tela cheia.
+   */
+  useEffect(() => {
+    const elemento = cinemaReady ? filmRef.current : videoRef.current
+    sessionRef.current?.attachVideoElement(elemento)
+  }, [cinemaReady, joined])
+
   // Tela + som do sistema.
   useEffect(() => {
     const video = videoRef.current

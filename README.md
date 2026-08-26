@@ -260,6 +260,23 @@ Estão comentadas no código, mas em resumo:
   — `setParameters` só aceita o id de transação mais recente. Dois ajustes
   simultâneos no mesmo sender faziam o segundo ser recusado, e o ajuste perdido
   era justamente o de um momento de congestionamento.
+- **A resolução segue o tamanho da JANELA de quem assiste**
+  ([`bitrate-budget.ts`](packages/rtc/src/bitrate-budget.ts)) — mandar 1080p para
+  um elemento de 600 px joga fora a maior parte dos pixels codificados, no upload
+  **e** na CPU de quem transmite. Quem assiste numa janelinha ou no celular não
+  ganha nada com isso; só o host paga. A informação necessária só existe do lado
+  de quem assiste, então ela viaja junto com as estatísticas que já iam.
+  Com piso: o corte por tamanho para em 540p, porque tela compartilhada ilegível
+  não é transmissão barata, é transmissão desperdiçada — falta de banda continua
+  podendo descer mais, porque "não precisa" e "não cabe" são coisas diferentes.
+  Ideia tirada do [golive](https://github.com/Nem-Tudo/group-sharescreen), que
+  mediu ~3,7× menos upload e ~4,7× menos encode numa sala grande.
+- **A estimativa de banda é piso, não teto** — `availableOutgoingBitrate` só
+  aprende que o link aguenta mais quando ele carrega mais, o que fecha um laço:
+  rebaixou → passa pouco → estimativa fica baixa → continua rebaixado, sem nada
+  na rede ter piorado. Se 2 Mbps estão comprovadamente saindo, o link carrega
+  pelo menos 2 Mbps. A exceção é quando o encoder acusa gargalo de banda: aí o
+  que está saindo pode ser justamente o excesso que causa perda.
 - **Estatísticas dos dois lados** — o viewer reporta pelo canal de controle o que
   está realmente recebendo, então o HUD do host mostra o gargalo do *outro* lado,
   não só o próprio.

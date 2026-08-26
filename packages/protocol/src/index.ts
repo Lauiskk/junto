@@ -235,7 +235,23 @@ export const controlMessageSchema = z.discriminatedUnion('type', [
     kbps: z.number(),
     packetsLostPct: z.number(),
     jitterMs: z.number(),
-    freezeCount: z.number()
+    freezeCount: z.number(),
+    /**
+     * Tamanho em que o video esta REALMENTE sendo desenhado, em pixels de
+     * dispositivo (ja multiplicado pelo devicePixelRatio).
+     *
+     * E a informacao que so quem assiste tem, e a mais valiosa que ele pode
+     * dar: mandar 1080p para um elemento de 600 px de largura joga fora a
+     * maioria dos pixels codificados — no upload E na CPU de quem transmite.
+     * Quem assiste numa janelinha, ou num celular, nao precisa que o host
+     * queime banda desenhando o que a tela dele nem mostra.
+     *
+     * Ausente quando o layout ainda nao aconteceu (aba oculta, 0x0): reportar
+     * zero prenderia a transmissao na pior qualidade e ela nao voltaria quando
+     * a aba reaparecesse.
+     */
+    renderedWidth: z.number().int().positive().optional(),
+    renderedHeight: z.number().int().positive().optional()
   }),
 
   z.object({

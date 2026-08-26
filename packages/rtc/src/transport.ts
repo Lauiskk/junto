@@ -48,6 +48,9 @@ export interface ViewerReport {
   packetsLostPct: number
   jitterMs: number
   freezeCount: number
+  /** Tamanho real de exibicao, em pixels de dispositivo. 0 = nao informado. */
+  renderedWidth: number
+  renderedHeight: number
   at: number
 }
 

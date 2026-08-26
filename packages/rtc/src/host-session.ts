@@ -789,6 +789,8 @@ export class HostSession implements Broadcaster {
       sourceWidth: track.getSettings().width ?? 0,
       sourceHeight: track.getSettings().height ?? 0,
       presetMaxHeight: this.preset.maxHeight,
+      // O que quem assiste informou que a tela dele realmente usa.
+      renderedHeight: viewer.reported?.renderedHeight ?? 0,
       presetMaxKbps: this.preset.maxBitrateKbps,
       presetAudioKbps: this.preset.audioBitrateKbps,
       floorKbps: piso,
@@ -948,6 +950,8 @@ export class HostSession implements Broadcaster {
           packetsLostPct: message.packetsLostPct,
           jitterMs: message.jitterMs,
           freezeCount: message.freezeCount,
+          renderedWidth: message.renderedWidth ?? 0,
+          renderedHeight: message.renderedHeight ?? 0,
           at: Date.now()
         }
         this.publish()

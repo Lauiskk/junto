@@ -149,6 +149,17 @@ export function ViewerList({ viewers, onKick }: Props): ReactElement {
                     <p className="submetric">
                       congelou {receiving.freezeCount}x · jitter {receiving.jitterMs} ms
                     </p>
+                    {/*
+                      O tamanho em que a imagem realmente aparece na tela dele.
+                      Quando e menor que o que sai daqui, o host esta pagando
+                      upload e CPU por pixels que ninguem ve — e e por isso que
+                      a resolucao passa a ser limitada por este numero.
+                    */}
+                    {receiving.renderedHeight > 0 && (
+                      <p className="submetric">
+                        exibindo em {receiving.renderedWidth}x{receiving.renderedHeight}
+                      </p>
+                    )}
                   </>
                 ) : (
                   <p className="submetric">sem relato ainda</p>

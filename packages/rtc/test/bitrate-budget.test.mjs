@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 import {
   COOLDOWN_DOWN_MS,
   COOLDOWN_UP_MS,
+  MIN_RENDERED_CAP_HEIGHT,
   MIN_VIDEO_KBPS,
   QualityGovernor,
   audioBudgetFor,
@@ -472,4 +473,117 @@ test('a altura entregue fica perto da pedida', () => {
       )
     }
   }
+})
+
+test('quem assiste numa janela pequena nao custa 1080p', () => {
+  /**
+   * A otimizacao de maior impacto que existe aqui: mandar 1080p para um
+   * elemento de 600 px joga fora a maior parte dos pixels codificados, no
+   * upload E na CPU de quem transmite. Quem assiste na janelinha nao ganha nada
+   * com isso; so o host paga.
+   */
+  const banda = {
+    availableKbps: 9000,
+    sendingKbps: 7000,
+    ...semAudioSaindo,
+    limitation: 'none',
+    ...fonte1080,
+    ...preset1080
+  }
+
+  const telaCheia = decideQuality(banda)
+  const janelinha = decideQuality({ ...banda, renderedHeight: 600 })
+
+  assert.equal(telaCheia.targetHeight, 1080)
+  assert.equal(janelinha.targetHeight, 600, 'a altura tem que seguir o tile')
+  assert.ok(
+    janelinha.scaleResolutionDownBy > telaCheia.scaleResolutionDownBy,
+    'menos pixels codificados'
+  )
+})
+
+test('o corte por tamanho de tela tem piso, e ele e caro de proposito', () => {
+  // Ao pe da letra, um tile de 216 px pediria 216p. Mas tela compartilhada
+  // ilegivel nao e transmissao barata, e transmissao desperdicada.
+  const d = decideQuality({
+    availableKbps: 9000,
+    sendingKbps: 7000,
+    ...semAudioSaindo,
+    limitation: 'none',
+    ...fonte1080,
+    renderedHeight: 216,
+    ...preset1080
+  })
+
+  assert.equal(d.targetHeight, MIN_RENDERED_CAP_HEIGHT)
+  assert.equal(MIN_RENDERED_CAP_HEIGHT, 540)
+})
+
+test('falta de banda ainda desce abaixo do piso do tile', () => {
+  // Sao coisas diferentes: o tile diz "nao precisa", a banda diz "nao cabe".
+  // A segunda tem que continuar mandando.
+  const d = decideQuality({
+    availableKbps: 120,
+    sendingKbps: 120,
+    ...semAudioSaindo,
+    limitation: 'bandwidth',
+    ...fonte1080,
+    renderedHeight: 1080,
+    ...preset1080
+  })
+
+  assert.equal(d.targetHeight, 360, 'a banda manda mais que o tamanho do tile')
+})
+
+test('tile nao informado nao muda nada', () => {
+  // Aba oculta, layout ainda nao aconteceu, viewer antigo: na duvida, o host
+  // nao corta. Presumir zero prenderia a transmissao na pior qualidade.
+  const base = {
+    availableKbps: 9000,
+    sendingKbps: 7000,
+    ...semAudioSaindo,
+    limitation: 'none',
+    ...fonte1080,
+    ...preset1080
+  }
+
+  assert.equal(decideQuality(base).targetHeight, 1080)
+  assert.equal(decideQuality({ ...base, renderedHeight: 0 }).targetHeight, 1080)
+})
+
+test('a estimativa do ICE e piso, nao teto', () => {
+  /**
+   * A estimativa so aprende que o link aguenta mais quando ele carrega mais —
+   * o que fecha um laco: rebaixou, entao passa pouco, entao a estimativa fica
+   * baixa, entao continua rebaixado. Se 2 Mbps estao comprovadamente saindo, o
+   * link carrega pelo menos 2 Mbps.
+   */
+  const d = decideQuality({
+    availableKbps: 500,
+    sendingKbps: 3800,
+    sendingAudioKbps: 200,
+    limitation: 'none',
+    ...fonte1080,
+    ...preset1080
+  })
+
+  assert.ok(
+    d.maxBitrateKbps > 500,
+    `o que ja esta saindo e evidencia de capacidade, veio ${d.maxBitrateKbps}`
+  )
+  assert.equal(d.targetHeight, 900)
+})
+
+test('mas quando o encoder acusa a banda, a estimativa vence', () => {
+  // Aqui o que esta saindo pode ser justamente o excesso que causa perda.
+  const d = decideQuality({
+    availableKbps: 500,
+    sendingKbps: 3800,
+    sendingAudioKbps: 200,
+    limitation: 'bandwidth',
+    ...fonte1080,
+    ...preset1080
+  })
+
+  assert.ok(d.maxBitrateKbps <= 500, `deveria obedecer a estimativa, veio ${d.maxBitrateKbps}`)
 })
